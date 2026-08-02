@@ -172,10 +172,12 @@ export default function AttendanceRecordPage() {
 
   const handleSaveAll = async () => {
     setBulkSaving(true);
+    try {
     for (const user of filteredUsers as any[]) {
       if (rows[user.id]) {
         await saveRow(user.id);
       }
+    }
     } finally {
       setBulkSaving(false);
     }
@@ -185,7 +187,7 @@ export default function AttendanceRecordPage() {
     <div className="space-y-5 max-w-5xl">
       <PinSessionEndingOverlay visible={isPinSession && endingSession} />
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
+    try {
           <h1 className="font-serif text-2xl font-bold">Record Attendance</h1>
           <p className="text-muted-foreground text-sm">
             One record per staff member per day — check them in now, and check them out later without losing the entry.
