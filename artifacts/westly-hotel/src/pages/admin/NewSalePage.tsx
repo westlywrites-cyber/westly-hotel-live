@@ -139,6 +139,7 @@ export default function NewSalePage() {
         for (const cartItem of inventoryCartItems) {
           const invRef = doc(db, "inventory", cartItem.id);
           const invSnap = await transaction.get(invRef);
+          if (!invSnap.exists()) throw new Error(`Inventory item not found: ${cartItem.id}`);
           const currentQty = invSnap.data().quantity;
           transaction.update(invRef, { quantity: currentQty - cartItem.quantity, updatedAt: serverTimestamp() });
         }

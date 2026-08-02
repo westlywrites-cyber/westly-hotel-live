@@ -85,7 +85,7 @@ export default function LaundryPage() {
   const [chargeTarget, setChargeTarget] = useState<any>(null);
   const [chargeValue, setChargeValue] = useState("");
 
-  const active = useMemo(
+  const active = useMemo<any[]>(
     () => requests.filter((r: any) => r.status !== "delivered" && r.status !== "cancelled")
       .sort((a: any, b: any) => (toFirestoreDate(a.createdAt)?.getTime() ?? 0) - (toFirestoreDate(b.createdAt)?.getTime() ?? 0)),
     [requests]

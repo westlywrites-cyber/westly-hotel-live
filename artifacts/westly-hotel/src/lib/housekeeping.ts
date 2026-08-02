@@ -80,7 +80,7 @@ export async function assignRoomsToHousekeeper(params: AssignRoomsParams): Promi
     if (!snap.exists()) return;
     const data = snap.data() as any;
     if (data.housekeeperId === housekeeperId) return; // already theirs, nothing to displace
-    const entry = displaced.get(data.groupId) || { housekeeperId: data.housekeeperId, groupId: data.groupId, roomIds: [] };
+    const entry = displaced.get(data.groupId) || { housekeeperId: data.housekeeperId, groupId: data.groupId, roomIds: [] as string[] };
     entry.roomIds.push(rooms[i].id);
     displaced.set(data.groupId, entry);
   });

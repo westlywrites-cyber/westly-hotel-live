@@ -48,6 +48,13 @@ const TYPE_ICON: Record<NotificationType, React.ComponentType<any>> = {
   task_reassigned: ClipboardList,
   task_completed: ClipboardCheck,
   task_overdue: ClipboardX,
+  room_assigned: DoorOpen,
+  room_reassigned: RotateCcw,
+  room_assignment_ended: CheckCircle2,
+  housekeeping_task_scheduled: CalendarClock,
+  shift_assigned: CalendarCheck,
+  shift_updated: CalendarClock,
+  shift_cancelled: CalendarX,
 };
 
 const SEVERITY_DOT: Record<string, string> = {
