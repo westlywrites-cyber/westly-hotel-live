@@ -1,0 +1,6 @@
+# Copy to .dev.vars (gitignored) for local `wrangler pages dev` testing.
+# In production these are set in the Cloudflare dashboard under
+# Settings → Environment variables and secrets — this file is local-only.
+
+FIREBASE_SERVICE_ACCOUNT_KEY=<same base64-encoded service account JSON you used on Netlify>
+FIREBASE_DATABASE_URL=<optional — not currently read by functions/_shared/firebaseRest.ts>

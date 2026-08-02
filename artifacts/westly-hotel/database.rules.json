@@ -1,0 +1,34 @@
+{
+  "rules": {
+    // Live synchronization data only — no permanent business records.
+    // Authenticated admin users may read and write live data.
+    // Public users may read room availability for the booking page.
+    //
+    // ⚠️ Same critical gap as firestore.rules: "auth != null" only holds for
+    // users who did a full email/password Firebase Auth login. Shared-device
+    // PIN logins (PinLoginPage) never sign in to Firebase Auth, so PIN-based
+    // staff will get permission denied writing roomStatus/dashboard_counters/
+    // activity_feed until PIN sessions are bridged to real Firebase Auth
+    // (see the note at the top of firestore.rules for the recommended fix).
+    ".read": false,
+    ".write": false,
+
+    "roomStatus": {
+      // Live room status — public read (for booking page), admin write
+      ".read": true,
+      ".write": "auth != null"
+    },
+
+    "dashboard_counters": {
+      // Dashboard counters — admin only
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+
+    "activity_feed": {
+      // Live activity timeline — admin only
+      ".read": "auth != null",
+      ".write": "auth != null"
+    }
+  }
+}

@@ -1,0 +1,85 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Westly Demo Hotel — Netlify Deployment Configuration
+#
+# This file configures the monorepo build + routing for Netlify.
+#
+# Domain routing:
+#   yourdomain.com           → public hotel website (/)
+#   admin.yourdomain.com     → redirects into /admin/* (configure via Netlify
+#                             Domain Management → Branch/Domain Aliases)
+#   hotel.yourdomain.com     → PIN terminal (/admin/pin)
+#
+# To enable subdomain routing on Netlify:
+#   1. Add a custom domain in Site Settings → Domain Management.
+#   2. Create a CNAME record for `admin` pointing to your Netlify site.
+#   3. In Netlify, add `admin.yourdomain.com` as a domain alias.
+#   4. The redirect rules below will route it correctly.
+# ══════════════════════════════════════════════════════════════════════════════
+
+[build]
+  command = "npm install && npm run build"
+  publish = "dist/public"
+
+# ── Admin-only serverless functions (Firebase Admin SDK) ─────────────────────
+# See netlify/functions/_shared/admin.ts for the service-account setup this
+# requires (FIREBASE_SERVICE_ACCOUNT_KEY env var).
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# ── Admin subdomain → /admin/login ───────────────────────────────────────────
+# Requests to admin.yourdomain.com/* are served by the same SPA but start
+# the user at the admin section.
+[[redirects]]
+  from    = "https://admin.*/*"
+  to      = "/admin/:splat"
+  status  = 200
+  force   = false
+
+[[redirects]]
+  from    = "https://admin.*"
+  to      = "/admin/login"
+  status  = 301
+
+# ── PIN terminal subdomain → /admin/pin ──────────────────────────────────────
+# Shared-device PIN terminal. hotel.yourdomain.com opens the PIN keypad only.
+[[redirects]]
+  from    = "https://hotel.*"
+  to      = "/admin/pin"
+  status  = 301
+
+# ── SPA catch-all: all routes → index.html ───────────────────────────────────
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200
+
+# ── Security headers ──────────────────────────────────────────────────────────
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options           = "DENY"
+    X-Content-Type-Options    = "nosniff"
+    X-XSS-Protection          = "1; mode=block"
+    Referrer-Policy           = "strict-origin-when-cross-origin"
+    Permissions-Policy        = "camera=(), microphone=(), geolocation=()"
+    Content-Security-Policy   = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.firebaseio.com https://*.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https: blob:; connect-src 'self' https://*.firebaseio.com https://*.googleapis.com https://westlyhotel.investorwestly.workers.dev https://*.supabase.co wss://*.firebaseio.com wss://*.supabase.co; frame-ancestors 'none';"
+
+# ── Aggressive caching for hashed static assets ───────────────────────────────
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# ── Admin/Staff PWA: service worker + manifest must always be revalidated ────
+# so an update to the SW (or an install-eligibility change to the manifest)
+# reaches installed devices promptly instead of being stuck behind a cache.
+[[headers]]
+  for = "/admin-sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/admin-manifest.webmanifest"
+  [headers.values]
+    Cache-Control = "no-cache"

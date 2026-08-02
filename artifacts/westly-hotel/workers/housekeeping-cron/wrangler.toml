@@ -1,0 +1,11 @@
+name = "westly-hotel-housekeeping-cron"
+main = "src/index.ts"
+compatibility_date = "2026-08-01"
+
+[triggers]
+crons = ["*/5 * * * *"]
+
+# Secrets (set these with `npx wrangler secret put <NAME>`, not here):
+#   FIREBASE_SERVICE_ACCOUNT_KEY
+#   FIREBASE_DATABASE_URL   (optional — not currently read by the REST client,
+#                            kept for parity with the Netlify env var name)
