@@ -6,7 +6,7 @@ import {
   Banknote, Receipt, RotateCcw, ReceiptText, PackageSearch, PackageCheck,
   Sparkles, CheckCircle2, DoorOpen, Wrench, ShieldCheck, AlertTriangle,
   Star, Mail, ShieldAlert, Siren, Trash2, CheckCheck, Shirt, ClipboardList,
-  ClipboardCheck, ClipboardX,
+  ClipboardCheck, ClipboardX, Dumbbell,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -55,6 +55,12 @@ const TYPE_ICON: Record<NotificationType, React.ComponentType<any>> = {
   shift_assigned: CalendarCheck,
   shift_updated: CalendarClock,
   shift_cancelled: CalendarX,
+  gym_membership_registered: Dumbbell,
+  gym_membership_renewed: Dumbbell,
+  gym_membership_expiring: Dumbbell,
+  gym_membership_suspended: Dumbbell,
+  gym_check_in: Dumbbell,
+  gym_check_out: Dumbbell,
 };
 
 const SEVERITY_DOT: Record<string, string> = {

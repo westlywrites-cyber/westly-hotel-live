@@ -43,6 +43,8 @@ onlyBuiltDependencies:
   - unrs-resolver
 
 overrides:
+  '@types/react': ^18.3.11
+  '@types/react-dom': ^18.3.1
   '@esbuild-kit/esm-loader': npm:tsx@^4.21.0
   '@expo/ngrok-bin>@expo/ngrok-bin-darwin-arm64': '-'
   '@expo/ngrok-bin>@expo/ngrok-bin-darwin-x64': '-'
