@@ -13,8 +13,10 @@
     "@replit/connectors-sdk": "^0.4.1"
   },
   "devDependencies": {
+    "@types/node": "catalog:",
     "prettier": "^3.9.6",
-    "typescript": "~5.9.3"
+    "typescript": "~5.9.3",
+    "vite": "catalog:"
   },
   "pnpm": {
     "overrides": {
