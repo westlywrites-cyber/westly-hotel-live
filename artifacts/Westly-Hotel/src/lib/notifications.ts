@@ -45,7 +45,9 @@ export type NotificationType =
   | "low_inventory" | "staff_alert" | "new_review" | "contact_message" | "system_alert"
   | "laundry_request" | "laundry_ready"
   | "task_assigned" | "task_reassigned" | "task_completed" | "task_overdue"
-  | "shift_assigned" | "shift_updated" | "shift_cancelled";
+  | "shift_assigned" | "shift_updated" | "shift_cancelled"
+  | "gym_membership_registered" | "gym_membership_renewed" | "gym_membership_expiring"
+  | "gym_membership_suspended" | "gym_check_in" | "gym_check_out";
 
 export interface NotifyParams {
   type: NotificationType;
@@ -75,6 +77,8 @@ const TELEGRAM_EXCLUDED_TYPES: NotificationType[] = [
   "lost_found_item",
   "lost_found_claimed",
   "contact_message",
+  "gym_check_in",
+  "gym_check_out",
 ];
 
 /**
@@ -180,6 +184,7 @@ const FINANCE: Role[] = ["super_admin", "manager", "accountant"];
 // oversees day-to-day activity across departments but doesn't need
 // finance-only notifications (payments, expense approvals, etc.).
 const OPS: Role[] = ["super_admin", "manager", "operations_manager"];
+const GYM_OVERSIGHT: Role[] = ["super_admin", "manager", "operations_manager"];
 
 // ── Bookings ────────────────────────────────────────────────────────────
 export function notifyNewBooking(guestName: string, roomType: string, checkIn: string, checkOut: string) {
@@ -581,6 +586,80 @@ export function notifyContactMessage(name: string, email: string, subject: strin
 
 // ── Staff / system ──────────────────────────────────────────────────────
 /** Generic "needs management attention" alert — approvals, deletions, unusual activity, etc. */
+// ── Gym ─────────────────────────────────────────────────────────────────
+export function notifyGymMembershipRegistered(memberName: string, packageName: string, registeredBy: string) {
+  return notify({
+    type: "gym_membership_registered",
+    title: "New Gym Membership",
+    message: `${memberName} registered for ${packageName} by ${registeredBy}.`,
+    forRoles: GYM_OVERSIGHT,
+    excludeActor: true,
+    link: "/admin/gym/members",
+  });
+}
+
+export function notifyGymMembershipRenewed(memberName: string, packageName: string, renewedBy: string) {
+  return notify({
+    type: "gym_membership_renewed",
+    title: "Gym Membership Renewed",
+    message: `${memberName}'s ${packageName} membership was renewed by ${renewedBy}.`,
+    forRoles: GYM_OVERSIGHT,
+    excludeActor: true,
+    link: "/admin/gym/members",
+  });
+}
+
+export function notifyGymMembershipExpiring(memberName: string, daysLeft: number) {
+  return notify({
+    type: "gym_membership_expiring",
+    title: "Membership Expiring Soon",
+    message: `${memberName}'s gym membership expires in ${daysLeft} day${daysLeft === 1 ? "" : "s"}.`,
+    forRoles: ["gym_staff", ...GYM_OVERSIGHT],
+    severity: "warning",
+    link: "/admin/gym/members",
+  });
+}
+
+export function notifyGymMembershipSuspended(memberName: string, suspendedBy: string, reason?: string | null) {
+  return notify({
+    type: "gym_membership_suspended",
+    title: "Gym Membership Suspended",
+    message: `${memberName}'s membership was suspended by ${suspendedBy}${reason ? ` — ${reason}` : ""}.`,
+    forRoles: GYM_OVERSIGHT,
+    excludeActor: true,
+    severity: "warning",
+    link: "/admin/gym/members",
+  });
+}
+
+// Check-in/out events are frequent by design, so they only alert other Gym
+// Staff on shift (not management — see GymOverviewCard/GymReportsPage for
+// how admin/manager/ops roles monitor gym activity in real time instead of
+// via the Notification Center).
+export function notifyGymCheckIn(memberName: string, checkedInBy: string) {
+  return notify({
+    type: "gym_check_in",
+    title: "Gym Check-In",
+    message: `${memberName} checked in (by ${checkedInBy}).`,
+    forRoles: ["gym_staff"],
+    excludeActor: true,
+    severity: "info",
+    link: "/admin/gym/checkin",
+  });
+}
+
+export function notifyGymCheckOut(memberName: string, checkedOutBy: string) {
+  return notify({
+    type: "gym_check_out",
+    title: "Gym Check-Out",
+    message: `${memberName} checked out (by ${checkedOutBy}).`,
+    forRoles: ["gym_staff"],
+    excludeActor: true,
+    severity: "info",
+    link: "/admin/gym/checkin",
+  });
+}
+
 export function notifyStaffAlert(title: string, message: string, severity: NotificationSeverity = "warning") {
   return notify({ type: "staff_alert", title, message, forRoles: MGMT, severity, link: "/admin/audit-log" });
 }

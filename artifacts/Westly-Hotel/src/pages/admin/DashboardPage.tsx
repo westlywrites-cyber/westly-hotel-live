@@ -9,6 +9,7 @@ import HousekeepingDashboard from "@/components/admin/dashboards/HousekeepingDas
 import BarAttendantDashboard from "@/components/admin/dashboards/BarAttendantDashboard";
 import LaundryValetDashboard from "@/components/admin/dashboards/LaundryValetDashboard";
 import OperationsManagerDashboard from "@/components/admin/dashboards/OperationsManagerDashboard";
+import GymStaffDashboard from "@/components/admin/dashboards/GymStaffDashboard";
 
 export default function DashboardPage() {
   const { role } = useAuth();
@@ -24,6 +25,7 @@ export default function DashboardPage() {
     case "bar_attendant": return <BarAttendantDashboard />;
     case "laundry_valet": return <LaundryValetDashboard />;
     case "operations_manager": return <OperationsManagerDashboard />;
+    case "gym_staff":   return <GymStaffDashboard />;
     default:            return <SuperAdminDashboard />;
   }
 }

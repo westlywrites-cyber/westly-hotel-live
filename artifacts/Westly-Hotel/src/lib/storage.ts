@@ -24,6 +24,7 @@ export type ImageFolder =
   | "cms-about"
   | "gallery"
   | "venues"
+  | "gym"
   | "cms-contact-hero"
   | "cms-faq-hero"
   | "cms-facilities-hero"
@@ -31,6 +32,7 @@ export type ImageFolder =
   | "cms-restaurant-hero"
   | "cms-testimonials-hero"
   | "cms-venue-hero"
+  | "cms-gym-hero"
   | "cms-login-background";
 
 const BUCKET = "westly-media";

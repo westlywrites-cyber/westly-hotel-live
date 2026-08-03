@@ -3,7 +3,11 @@ export type Role =
   | "housekeeping" | "bar_attendant" | "laundry_valet" | "operations_manager"
   // Added for Operations Manager shift scheduling + task assignment coverage —
   // multi-staff front-line roles that previously had no formal account type.
-  | "maintenance_technician" | "security_guard" | "driver" | "restaurant_attendant" | "kitchen_staff";
+  | "maintenance_technician" | "security_guard" | "driver" | "restaurant_attendant" | "kitchen_staff"
+  // Gym Management module — front-desk role for the hotel gym (membership
+  // registration, check-in/out, renewals). Shared-device PIN role, like
+  // Receptionist, since it staffs a physical desk.
+  | "gym_staff";
 
 // PIN-eligible roles: lower-privilege roles that share devices
 // operations_manager is a supervisory role, like manager/accountant — full
@@ -11,6 +15,7 @@ export type Role =
 export const PIN_ELIGIBLE_ROLES: Role[] = [
   "receptionist", "staff", "waiter", "housekeeping", "bar_attendant", "laundry_valet",
   "maintenance_technician", "security_guard", "driver", "restaurant_attendant", "kitchen_staff",
+  "gym_staff",
 ];
 
 // Roles a shift schedule can be built for — every role that normally has
@@ -19,6 +24,7 @@ export const PIN_ELIGIBLE_ROLES: Role[] = [
 export const SHIFT_ROLES: Role[] = [
   "receptionist", "housekeeping", "waiter", "bar_attendant", "laundry_valet",
   "maintenance_technician", "security_guard", "driver", "restaurant_attendant", "kitchen_staff",
+  "gym_staff",
 ];
 
 // Roles that MUST use email/password login, never PIN
@@ -40,6 +46,10 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     "update:lost_found_status",
     "view:messages",
     "reply:messages",
+    "view:gym",
+    "view:gym_reports",
+    "manage:gym_content",
+    "manage:gym_staff",
   ],
   receptionist: [
     "checkin",
@@ -109,6 +119,18 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     "create:shifts",
     "manage:shifts",
     "view:all_shifts",
+    "view:gym",
+    "view:gym_reports",
+  ],
+  gym_staff: [
+    "manage:gym_members",
+    "register:gym_membership",
+    "renew:gym_membership",
+    "checkin:gym",
+    "checkout:gym",
+    "view:gym_attendance",
+    "view:gym_reports",
+    "view:own_shifts",
   ],
   maintenance_technician: [
     "view:maintenance",
@@ -160,6 +182,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   driver: "Driver",
   restaurant_attendant: "Restaurant Attendant",
   kitchen_staff: "Kitchen Staff",
+  gym_staff: "Gym Staff",
 };
 
 export const ROLE_COLORS: Record<Role, string> = {
@@ -178,4 +201,5 @@ export const ROLE_COLORS: Record<Role, string> = {
   driver: "bg-lime-100 text-lime-800 dark:bg-lime-900/30 dark:text-lime-400",
   restaurant_attendant: "bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-400",
   kitchen_staff: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+  gym_staff: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400",
 };

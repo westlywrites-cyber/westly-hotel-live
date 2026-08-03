@@ -85,6 +85,13 @@ export const PAGE_HERO_SECTIONS: PageHeroSectionDef[] = [
     supportsButton: true,
   },
   {
+    docId: "gym_hero",
+    label: "Gym Page Hero Banner",
+    usedOn: "/gym",
+    folder: "cms-gym-hero",
+    supportsButton: true,
+  },
+  {
     docId: "testimonials_hero",
     label: "Testimonials Section Background",
     usedOn: "/testimonials",

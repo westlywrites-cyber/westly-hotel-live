@@ -15,7 +15,7 @@ import {
   Banknote, TrendingUp, Receipt, Coffee, Wrench, Bell,
   UserCheck, ShoppingCart, BookOpen, BarChart2, Archive,
   Building2, Utensils, Globe, PackageSearch, Images, MessageSquareText,
-  Download, Mail, ShieldOff, Wine, Shirt, CalendarClock, Landmark,
+  Download, Mail, ShieldOff, Wine, Shirt, CalendarClock, Landmark, Dumbbell,
 } from "lucide-react";
 import type { Role } from "@/lib/rbac";
 
@@ -105,6 +105,17 @@ const NAV: NavItem[] = [
     ],
   },
   {
+    label: "Gym",
+    icon: Dumbbell,
+    roles: ["super_admin", "manager", "operations_manager", "gym_staff"],
+    children: [
+      { label: "Check-In / Out", href: "/admin/gym/checkin", icon: Dumbbell, roles: ["super_admin", "gym_staff"] },
+      { label: "Members", href: "/admin/gym/members", icon: Users },
+      { label: "Attendance", href: "/admin/gym/attendance", icon: CalendarClock },
+      { label: "Reports", href: "/admin/gym/reports", icon: BarChart2 },
+    ],
+  },
+  {
     label: "Finance",
     icon: Banknote,
     roles: ["super_admin", "accountant", "manager"],
@@ -125,6 +136,7 @@ const NAV: NavItem[] = [
   { label: "Deleted Records", href: "/admin/deleted-records", icon: Archive, roles: ["super_admin"] },
   { label: "Website CMS", href: "/admin/cms", icon: BookOpen, roles: ["super_admin"] },
   { label: "Facilities", href: "/admin/facilities", icon: Building2, roles: ["super_admin", "manager"] },
+  { label: "Gym Content", href: "/admin/gym-cms", icon: Dumbbell, roles: ["super_admin", "manager"] },
   { label: "Gallery", href: "/admin/gallery", icon: Images, roles: ["super_admin", "manager"] },
   { label: "Guest Reviews", href: "/admin/reviews", icon: MessageSquareText, roles: ["super_admin", "manager"] },
   { label: "Settings", href: "/admin/settings", icon: Settings, roles: ["super_admin"] },

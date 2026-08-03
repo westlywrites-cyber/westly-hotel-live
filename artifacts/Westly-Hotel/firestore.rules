@@ -108,6 +108,10 @@ service cloud.firestore {
       return isSignedIn() && getUserRole() == 'kitchen_staff' && isActive();
     }
 
+    function isGymStaff() {
+      return isSignedIn() && getUserRole() == 'gym_staff' && isActive();
+    }
+
     // Any of the newer single-purpose front-line roles added for shift
     // scheduling — none of them have bespoke collection access beyond
     // tasks/shifts/notifications/attendance, so they're grouped here.
@@ -122,7 +126,7 @@ service cloud.firestore {
         'super_admin', 'manager', 'receptionist', 'accountant',
         'staff', 'waiter', 'housekeeping', 'bar_attendant', 'laundry_valet',
         'operations_manager', 'maintenance_technician', 'security_guard',
-        'driver', 'restaurant_attendant', 'kitchen_staff'
+        'driver', 'restaurant_attendant', 'kitchen_staff', 'gym_staff'
       ];
     }
 
@@ -144,6 +148,14 @@ service cloud.firestore {
     // Anyone who oversees housekeeping operations end-to-end (assigns rooms,
     // assigns/reassigns tasks, sees every housekeeper's queue).
     function isHousekeepingSupervisor() {
+      return isManagement() || isOperationsManager();
+    }
+
+    // Anyone who oversees gym operations end-to-end (Super Admin, Manager,
+    // Operations Manager) — same "management + ops manager" shape as
+    // housekeeping, since these are the roles the spec calls out as needing
+    // to view memberships/attendance/reports and manage Gym Staff.
+    function isGymSupervisor() {
       return isManagement() || isOperationsManager();
     }
 
@@ -481,11 +493,11 @@ service cloud.firestore {
     match /cms_content/{docId} {
       allow read:  if true;
       // The restaurant menu (RestaurantManagementPage.tsx), the facilities
-      // list, and the gallery (GalleryManagementPage.tsx) are all editable
-      // by Manager as well as Super Admin, matching each page's route
-      // access. Every other CMS document (homepage content, etc.) remains
-      // super_admin-only.
-      allow write: if docId in ['restaurant_menu', 'bar_menu', 'gallery', 'facilities'] ? isManagement() : isSuperAdmin();
+      // list, the gallery (GalleryManagementPage.tsx), and the gym content
+      // page are all editable by Manager as well as Super Admin, matching
+      // each page's route access. Every other CMS document (homepage
+      // content, hero banners, etc.) remains super_admin-only.
+      allow write: if docId in ['restaurant_menu', 'bar_menu', 'gallery', 'facilities', 'gym'] ? isManagement() : isSuperAdmin();
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -704,6 +716,32 @@ service cloud.firestore {
       allow create: if isManagement() || isHousekeeping();
       allow update: if isManagement();
       allow delete: if isSuperAdmin();
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // GYM MANAGEMENT — membership records + attendance/visit log for the
+    // hotel gym. Gym Staff run day-to-day desk operations (registration,
+    // renewals, check-in/out); Super Admin, Manager, and Operations Manager
+    // oversee memberships, attendance, and reports without needing to be
+    // Gym Staff themselves (isGymSupervisor(), same shape as housekeeping's
+    // supervisor model above).
+    // ══════════════════════════════════════════════════════════════════════════
+    match /gym_members/{memberId} {
+      allow read:   if isGymSupervisor() || isGymStaff();
+      allow create: if isGymSupervisor() || isGymStaff();
+      allow update: if isGymSupervisor() || isGymStaff();
+      allow delete: if false; // soft delete only (isDeleted: true)
+    }
+
+    match /gym_attendance/{visitId} {
+      allow read:   if isGymSupervisor() || isGymStaff();
+      allow create: if isGymSupervisor() || isGymStaff();
+      // Only the checkOutAt/checkedOutBy fields are ever updated after
+      // creation (closing out an open visit) — enforced client-side by
+      // src/lib/gym.ts; supervisors/gym staff may both do this so a shift
+      // handover doesn't strand an open visit.
+      allow update: if isGymSupervisor() || isGymStaff();
+      allow delete: if false;
     }
 
     // ══════════════════════════════════════════════════════════════════════════

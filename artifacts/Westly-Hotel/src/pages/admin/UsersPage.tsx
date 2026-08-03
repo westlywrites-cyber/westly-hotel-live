@@ -255,7 +255,7 @@ export default function UsersPage() {
             </div>
             <div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted p-3 rounded">
               <Shield className="w-4 h-4 shrink-0 mt-0.5" />
-              PIN is only used by shared-device roles (Receptionist, Staff, Waiter, Housekeeping, Bar Attendant, Laundry Valet).
+              PIN is only used by shared-device roles (Receptionist, Staff, Waiter, Housekeeping, Bar Attendant, Laundry Valet, Gym Staff, and other front-line roles).
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setShowDialog(false)}>Cancel</Button>

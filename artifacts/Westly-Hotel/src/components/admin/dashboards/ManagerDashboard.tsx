@@ -10,6 +10,7 @@ import { Link } from "wouter";
 import { BedDouble, CalendarCheck, Users, TrendingUp, AlertTriangle, CheckCircle, Clock } from "lucide-react";
 import { formatCurrency, toFirestoreDate, formatDate } from "@/lib/utils";
 import { DataError } from "@/components/ui/data-error";
+import GymOverviewCard from "@/components/admin/GymOverviewCard";
 import { format, startOfDay as fnsStartOfDay, endOfDay as fnsEndOfDay } from "date-fns";
 
 // using @/lib/utils partial
@@ -143,6 +144,8 @@ export default function ManagerDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      <GymOverviewCard />
       </>
       )}
     </div>

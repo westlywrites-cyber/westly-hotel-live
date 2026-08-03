@@ -12,6 +12,7 @@ import {
 import { toFirestoreDate } from "@/lib/utils";
 import { format } from "date-fns";
 import TaskAssignDialog from "@/components/admin/TaskAssignDialog";
+import GymOverviewCard from "@/components/admin/GymOverviewCard";
 
 export default function OperationsManagerDashboard() {
   const { adminUser } = useAuth();
@@ -344,6 +345,8 @@ export default function OperationsManagerDashboard() {
               </CardContent>
             </Card>
           </div>
+
+          <GymOverviewCard />
         </>
       )}
 

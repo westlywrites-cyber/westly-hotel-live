@@ -11,6 +11,7 @@ import RoomDetailPage from "@/pages/public/RoomDetailPage";
 import GalleryPage from "@/pages/public/GalleryPage";
 import FacilitiesPage from "@/pages/public/FacilitiesPage";
 import VenuePage from "@/pages/public/VenuePage";
+import GymPage from "@/pages/public/GymPage";
 import RestaurantPage from "@/pages/public/RestaurantPage";
 import AboutPage from "@/pages/public/AboutPage";
 import ContactPage from "@/pages/public/ContactPage";
@@ -75,6 +76,11 @@ import LaundryHistoryPage from "@/pages/admin/LaundryHistoryPage";
 import TasksPage from "@/pages/admin/TasksPage";
 import MyTasksPage from "@/pages/admin/MyTasksPage";
 import ShiftSchedulingPage from "@/pages/admin/ShiftSchedulingPage";
+import GymManagementPage from "@/pages/admin/GymManagementPage";
+import GymMembersPage from "@/pages/admin/gym/GymMembersPage";
+import GymCheckInPage from "@/pages/admin/gym/GymCheckInPage";
+import GymAttendancePage from "@/pages/admin/gym/GymAttendancePage";
+import GymReportsPage from "@/pages/admin/gym/GymReportsPage";
 
 import NotFound from "@/pages/not-found";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -166,6 +172,7 @@ function Router() {
       <Route path="/gallery" component={PublicRoute({ component: GalleryPage })} />
       <Route path="/facilities" component={PublicRoute({ component: FacilitiesPage })} />
       <Route path="/venues" component={PublicRoute({ component: VenuePage })} />
+      <Route path="/gym" component={PublicRoute({ component: GymPage })} />
       <Route path="/restaurant" component={PublicRoute({ component: RestaurantPage })} />
       <Route path="/about" component={PublicRoute({ component: AboutPage })} />
       <Route path="/contact" component={PublicRoute({ component: ContactPage })} />
@@ -238,6 +245,13 @@ function Router() {
       <Route path="/admin/shifts" component={ProtectedRoute({ component: ShiftSchedulingPage, allowedRoles: ["super_admin", "manager", "operations_manager"] })} />
       {/* My Tasks is open to any signed-in staff role — whoever a task is assigned to. */}
       <Route path="/admin/my-tasks" component={ProtectedRoute({ component: MyTasksPage })} />
+
+      {/* ── Gym module ── */}
+      <Route path="/admin/gym-cms" component={ProtectedRoute({ component: GymManagementPage, allowedRoles: ["super_admin", "manager"] })} />
+      <Route path="/admin/gym/members" component={ProtectedRoute({ component: GymMembersPage, allowedRoles: ["super_admin", "manager", "operations_manager", "gym_staff"] })} />
+      <Route path="/admin/gym/checkin" component={ProtectedRoute({ component: GymCheckInPage, allowedRoles: ["super_admin", "manager", "operations_manager", "gym_staff"] })} />
+      <Route path="/admin/gym/attendance" component={ProtectedRoute({ component: GymAttendancePage, allowedRoles: ["super_admin", "manager", "operations_manager", "gym_staff"] })} />
+      <Route path="/admin/gym/reports" component={ProtectedRoute({ component: GymReportsPage, allowedRoles: ["super_admin", "manager", "operations_manager", "gym_staff"] })} />
 
       <Route component={NotFound} />
     </Switch>

@@ -9,6 +9,7 @@ const NAV_LINKS = [
   { href: "/rooms", label: "Rooms" },
   { href: "/facilities", label: "Facilities" },
   { href: "/venues", label: "Venues" },
+  { href: "/gym", label: "Gym" },
   { href: "/restaurant", label: "Restaurant" },
   { href: "/gallery", label: "Gallery" },
   { href: "/about", label: "About" },

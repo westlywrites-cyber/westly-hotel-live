@@ -15,6 +15,7 @@ import {
 import { formatCurrency, formatDate, toFirestoreDate, timeAgo } from "@/lib/utils";
 import { useRevenueLedger, approvedOnly, inRange, sumAmount } from "@/lib/revenue";
 import { DataError } from "@/components/ui/data-error";
+import GymOverviewCard from "@/components/admin/GymOverviewCard";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar
 } from "recharts";
@@ -284,6 +285,8 @@ export default function SuperAdminDashboard() {
       </div>
       </>
       )}
+
+      <GymOverviewCard />
 
       {/* Activity Feed */}
       {activityFeed.length > 0 && (
