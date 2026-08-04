@@ -32,7 +32,7 @@ const NAV: NavItem[] = [
   { label: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
   { label: "My Tasks", href: "/admin/my-tasks", icon: ClipboardCheck },
   { label: "Messages", href: "/admin/messages", icon: Mail, roles: ["super_admin", "manager", "receptionist"] },
-  { label: "Rooms", href: "/admin/rooms", icon: BedDouble },
+  { label: "Rooms", href: "/admin/rooms", icon: BedDouble, roles: ["super_admin", "manager", "operations_manager", "receptionist"] },
   { label: "Venues", href: "/admin/venues", icon: Landmark, roles: ["super_admin"] },
   {
     label: "Operations",
@@ -47,7 +47,7 @@ const NAV: NavItem[] = [
     label: "Bookings",
     icon: CalendarCheck,
     children: [
-      { label: "All Bookings", href: "/admin/bookings", icon: BookOpen },
+      { label: "All Bookings", href: "/admin/bookings", icon: BookOpen, roles: ["super_admin", "manager", "operations_manager", "receptionist"] },
       { label: "Room Reservations", href: "/admin/room-reservations", icon: Globe, roles: ["super_admin", "receptionist"] },
       { label: "Check-In", href: "/admin/checkin", icon: UserCheck, roles: ["super_admin", "receptionist"] },
       { label: "Check Out", href: "/admin/checkout", icon: LogOut, roles: ["super_admin", "receptionist"] },

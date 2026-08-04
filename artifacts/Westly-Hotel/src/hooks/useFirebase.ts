@@ -15,17 +15,31 @@ import { db } from "@/lib/firebase";
 /**
  * Subscribe to a Firestore collection (with optional query constraints).
  * Automatically excludes soft-deleted documents unless you explicitly include them.
+ *
+ * `depsKey` (optional): an explicit string identifying the *values* behind
+ * queryConstraints, e.g. `` `${roomId}:${open}` ``. Pass this whenever the
+ * same constraint list (same field names, same operators, same order) can
+ * be rebuilt with a DIFFERENT value between renders — for example a filter
+ * whose target id changes when a collapsed panel is expanded. Without it,
+ * this hook only re-subscribes when the constraint *shape* changes (its
+ * list of `where`/`orderBy`/`limit` types), because QueryConstraint objects
+ * don't expose their actual filter values in a way that's safe to inspect
+ * here — so a value-only change would otherwise be silently missed and the
+ * component would keep listening to its original, stale query forever.
  */
 export function useCollection<T extends { id?: string }>(
   collectionName: string,
-  queryConstraints: QueryConstraint[] = []
+  queryConstraints: QueryConstraint[] = [],
+  depsKey?: string
 ) {
   const [data, setData] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
-  // Stable serialized key to avoid re-subscribing unless constraints actually change
-  const constraintsKey = JSON.stringify(queryConstraints.map(c => c.type));
+  // Stable serialized key to avoid re-subscribing unless constraints actually
+  // change. Falls back to constraint *types* only when no depsKey is given
+  // (preserves prior behavior for every existing call site).
+  const constraintsKey = depsKey ?? JSON.stringify(queryConstraints.map(c => c.type));
 
   useEffect(() => {
     setLoading(true);

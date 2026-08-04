@@ -45,7 +45,12 @@ function RoomHistory({ roomId }: { roomId: string }) {
       where("status", "==", "completed"),
       orderBy("completedAt", "desc"),
       limit(5),
-    ]
+    ],
+    // Explicit depsKey: the constraint list has the same shape (where/where/
+    // orderBy/limit) whether collapsed or open, so useCollection's default
+    // shape-only key never changed and this panel kept listening to the
+    // "__collapsed__" placeholder query forever, even after being expanded.
+    `${roomId}:${open}`
   );
 
   return (

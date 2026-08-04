@@ -136,7 +136,6 @@ function ProtectedRoute({
     );
   };
 }
-
 // ── Public route wrapper (no auth required) ───────────────────────────────────
 function PublicRoute({ component: Component }: { component: React.ComponentType<any> }) {
   return function PublicRouteWrapper(props: any) {
@@ -193,13 +192,13 @@ function Router() {
       {/* ── Protected admin routes ── */}
       <Route path="/admin" component={() => <Redirect to="/admin/dashboard" />} />
       <Route path="/admin/dashboard" component={ProtectedRoute({ component: DashboardPage })} />
-      <Route path="/admin/rooms" component={ProtectedRoute({ component: RoomsAdminPage })} />
+      <Route path="/admin/rooms" component={ProtectedRoute({ component: RoomsAdminPage, allowedRoles: ["super_admin", "manager", "operations_manager", "receptionist"] })} />
       <Route path="/admin/venues" component={ProtectedRoute({ component: VenuesAdminPage, allowedRoles: ["super_admin"] })} />
-      <Route path="/admin/bookings" component={ProtectedRoute({ component: BookingsPage })} />
+      <Route path="/admin/bookings" component={ProtectedRoute({ component: BookingsPage, allowedRoles: ["super_admin", "manager", "operations_manager", "receptionist"] })} />
       <Route path="/admin/checkin" component={ProtectedRoute({ component: WalkInPage, allowedRoles: ["super_admin", "receptionist"] })} />
       <Route path="/admin/checkout" component={ProtectedRoute({ component: CheckOutPage, allowedRoles: ["super_admin", "receptionist"] })} />
       <Route path="/admin/room-reservations" component={ProtectedRoute({ component: RoomReservationsPage, allowedRoles: ["super_admin", "receptionist"] })} />
-      <Route path="/admin/guests" component={ProtectedRoute({ component: GuestsPage })} />
+      <Route path="/admin/guests" component={ProtectedRoute({ component: GuestsPage, allowedRoles: ["super_admin", "manager", "receptionist"] })} />
       <Route path="/admin/users" component={ProtectedRoute({ component: UsersPage, allowedRoles: ["super_admin"] })} />
       <Route path="/admin/roles" component={ProtectedRoute({ component: RolesPage, allowedRoles: ["super_admin"] })} />
       <Route path="/admin/reports" component={ProtectedRoute({ component: ReportsPage, allowedRoles: ["super_admin", "manager", "accountant"] })} />
