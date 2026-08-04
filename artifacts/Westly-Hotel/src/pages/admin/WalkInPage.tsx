@@ -1,11 +1,11 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCollection, useDocument } from "@/hooks/useFirebase";
 import { runTransaction, doc, collection, serverTimestamp } from "firebase/firestore";
 import { ref, set } from "firebase/database";
 import { db, rtdb } from "@/lib/firebase";
 import { logAction } from "@/lib/audit";
-import { notify } from "@/lib/notifications";
+import { notify, notifyPaymentReceived } from "@/lib/notifications";
 import { pushActivity } from "@/hooks/useRealtime";
 import { detectConflict } from "@/lib/roomLogic";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,7 +18,7 @@ import { usePinTaskComplete } from "@/hooks/usePinTaskComplete";
 import { UserPlus, Loader2, CheckCircle, BedDouble } from "lucide-react";
 import {
   formatCurrency, formatDateTime, nightsBetween,
-  toDateTimeLocalValue, parseDateTimeLocal, combineDateAndTime,
+  toDateTimeLocalValue, parseDateTimeLocal, combineDateAndTime, withTimeout,
 } from "@/lib/utils";
 import { where } from "firebase/firestore";
 import { format, addDays } from "date-fns";
@@ -45,10 +45,19 @@ export default function WalkInPage() {
     guestName: "", guestEmail: "", guestPhone: "", nationality: "",
     roomId: "", checkInDateTime: toDateTimeLocalValue(new Date()),
     checkOut: format(addDays(new Date(), 1), "yyyy-MM-dd"),
-    adults: "1", children: "0", paymentMethod: "cash", idDocRef: "", notes: "",
+    adults: "1", children: "0", paymentMethod: "cash", paymentOption: "pay_at_checkin", idDocRef: "", notes: "",
   });
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState<any>(null);
+  // Synchronous re-entrancy guard. React's `loading` state doesn't update
+  // until the next render, so a fast double-click/double-tap on the submit
+  // button can fire handleSubmit twice before the disabled prop takes
+  // effect — two overlapping transactions racing on the same room is
+  // exactly what produced the "stuck on Processing" reports (one call's
+  // finally{} flips loading back to false while the other is still in
+  // flight). A ref flips instantly, in the same tick, so the second call
+  // is rejected before it does anything.
+  const submittingRef = useRef(false);
 
   const selectedRoom = useMemo(() => rooms.find(r => r.id === form.roomId) as any, [rooms, form.roomId]);
 
@@ -65,6 +74,7 @@ export default function WalkInPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!adminUser || !form.roomId || !form.guestName) return;
+    if (submittingRef.current) return; // already in flight — ignore the double-fire
 
     const checkIn = parseDateTimeLocal(form.checkInDateTime);
     if (!form.checkInDateTime || isNaN(checkIn.getTime())) {
@@ -80,7 +90,14 @@ export default function WalkInPage() {
       return;
     }
 
+    submittingRef.current = true;
+
     setLoading(true);
+
+    // Guest pays now, or the charge is deferred to check-out. Recorded on
+    // the booking so Check-Out knows whether the room charge has already
+    // been collected and must never be charged (or sent for approval) twice.
+    const payAtCheckIn = form.paymentOption === "pay_at_checkin";
 
     try {
       // Check for conflicts before transaction
@@ -88,8 +105,11 @@ export default function WalkInPage() {
       if (hasConflict) throw new Error("This room is already booked for the selected dates.");
 
       // ── Firestore Transaction: all writes are atomic ─────────────────────
+      // Wrapped in withTimeout so a stalled connection surfaces a clear,
+      // actionable error after 20s instead of leaving the button stuck on
+      // "Processing…" indefinitely.
       let bookingId: string;
-      await runTransaction(db, async (transaction) => {
+      await withTimeout(runTransaction(db, async (transaction) => {
         // Verify room is still available inside the transaction
         const roomRef = doc(db, "rooms", form.roomId);
         const roomSnap = await transaction.get(roomRef);
@@ -129,6 +149,13 @@ export default function WalkInPage() {
           children: parseInt(form.children),
           totalAmount,
           paymentMethod: form.paymentMethod,
+          // Payment option chosen by the Receptionist at check-in, and
+          // whether the room charge has actually been recorded yet. This is
+          // what Check-Out reads to decide whether the room charge is still
+          // due — it's the single source of truth that prevents the room
+          // payment from ever being recorded a second time at check-out.
+          paymentOption: form.paymentOption,
+          roomPaymentStatus: payAtCheckIn ? "paid" : "pending",
           status: "checked_in",
           source: "walk_in",
           createdAt: serverTimestamp(),
@@ -172,28 +199,33 @@ export default function WalkInPage() {
           statusUpdatedAt: serverTimestamp(),
         });
 
-        // 5. Create payment record
-        const paymentRef = doc(collection(db, "payments"));
-        transaction.set(paymentRef, {
-          bookingId: bookingRef.id,
-          guestName: form.guestName,
-          roomNumber: selectedRoom.number,
-          amount: totalAmount,
-          paymentMethod: form.paymentMethod,
-          type: "walk_in_payment",
-          recordedBy: adminUser.id,
-          recordedByName: adminUser.name,
-          createdAt: serverTimestamp(),
-          // Every payment starts as Pending Approval — it only counts as
-          // company revenue once the Accountant reviews and approves it.
-          approvalStatus: "pending",
-          approvedBy: null,
-          approvedByName: null,
-          approvedAt: null,
-          rejectedReason: null,
-          isDeleted: false,
-        });
-      });
+        // 5. Create payment record — only when the guest is paying now.
+        // "Pay at Check-Out" defers this entirely; Check-Out is the one
+        // place that will ever create a payment for this booking, so there
+        // is exactly one room-payment record per stay either way.
+        if (payAtCheckIn) {
+          const paymentRef = doc(collection(db, "payments"));
+          transaction.set(paymentRef, {
+            bookingId: bookingRef.id,
+            guestName: form.guestName,
+            roomNumber: selectedRoom.number,
+            amount: totalAmount,
+            paymentMethod: form.paymentMethod,
+            type: "walk_in_payment",
+            recordedBy: adminUser.id,
+            recordedByName: adminUser.name,
+            createdAt: serverTimestamp(),
+            // Every payment starts as Pending Approval — it only counts as
+            // company revenue once the Accountant reviews and approves it.
+            approvalStatus: "pending",
+            approvedBy: null,
+            approvedByName: null,
+            approvedAt: null,
+            rejectedReason: null,
+            isDeleted: false,
+          });
+        }
+      }), 20000);
       // ── Transaction complete ─────────────────────────────────────────────
 
       // Post-transaction operations (best-effort)
@@ -209,20 +241,31 @@ export default function WalkInPage() {
 
       pushActivity({ message: `Walk-in: ${form.guestName} → Room ${selectedRoom.number}`, type: "walk_in", userName: adminUser.name, userId: adminUser.id }).catch(() => {});
 
-      setSuccess({ guestName: form.guestName, roomNumber: selectedRoom.number, checkOut, amount: totalAmount });
+      // Alert the Accountant (and finance team) only when a payment was
+      // actually recorded — "Pay at Check-Out" guests generate no payment
+      // yet, so no approval request should go out until they actually pay.
+      if (payAtCheckIn) {
+        notifyPaymentReceived(form.guestName, totalAmount, form.paymentMethod, adminUser.name).catch(() => {});
+      }
+
+      setSuccess({ guestName: form.guestName, roomNumber: selectedRoom.number, checkOut, amount: totalAmount, payAtCheckIn });
       setForm({
         guestName: "", guestEmail: "", guestPhone: "", nationality: "", roomId: "",
         checkInDateTime: toDateTimeLocalValue(new Date()),
         checkOut: format(addDays(new Date(), 1), "yyyy-MM-dd"),
-        adults: "1", children: "0", paymentMethod: "cash", idDocRef: "", notes: "",
+        adults: "1", children: "0", paymentMethod: "cash", paymentOption: "pay_at_checkin", idDocRef: "", notes: "",
       });
 
-      toast({ title: "Walk-In Complete!", description: `${form.guestName} is now checked in.` });
+      toast({
+        title: "Walk-In Complete!",
+        description: payAtCheckIn ? `${form.guestName} is now checked in. Payment sent to the Accountant for approval.` : `${form.guestName} is now checked in. Payment will be collected at check-out.`,
+      });
       notifyTaskComplete();
     } catch (err: any) {
-      toast({ title: "Walk-In Failed", description: err.message, variant: "destructive" });
+      toast({ title: "Walk-In Failed", description: err.message || "Something went wrong. Please try again.", variant: "destructive" });
     } finally {
       setLoading(false);
+      submittingRef.current = false;
     }
   };
 
@@ -240,7 +283,11 @@ export default function WalkInPage() {
         </div>
         <div className="bg-muted rounded-xl p-4 text-sm text-left space-y-2">
           <div className="flex justify-between"><span className="text-muted-foreground">Check-Out</span><span>{formatDateTime(success.checkOut)}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Total Paid</span><span className="font-bold">{formatCurrency(success.amount)}</span></div>
+          {success.payAtCheckIn ? (
+            <div className="flex justify-between"><span className="text-muted-foreground">Total Paid</span><span className="font-bold">{formatCurrency(success.amount)}</span></div>
+          ) : (
+            <div className="flex justify-between"><span className="text-muted-foreground">Payment</span><span className="font-bold text-orange-600">{formatCurrency(success.amount)} due at check-out</span></div>
+          )}
         </div>
         {isPinSession ? (
           <p className="text-sm text-muted-foreground">
@@ -252,7 +299,6 @@ export default function WalkInPage() {
       </div>
     );
   }
-
   return (
     <div className="space-y-5 max-w-3xl">
       <div>
@@ -361,17 +407,34 @@ export default function WalkInPage() {
               </div>
             )}
             <div className="space-y-2">
-              <Label>Payment Method</Label>
-              <Select value={form.paymentMethod} onValueChange={v => setForm({...form, paymentMethod: v})}>
+              <Label>Payment Option *</Label>
+              <Select value={form.paymentOption} onValueChange={v => setForm({...form, paymentOption: v})}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="cash">Cash</SelectItem>
-                  <SelectItem value="credit_card">Credit Card</SelectItem>
-                  <SelectItem value="debit_card">Debit Card</SelectItem>
-                  <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                  <SelectItem value="pay_at_checkin">Pay at Check-In</SelectItem>
+                  <SelectItem value="pay_at_checkout">Pay at Check-Out</SelectItem>
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                {form.paymentOption === "pay_at_checkin"
+                  ? "Payment is recorded now and sent to the Accountant for approval."
+                  : "No payment is recorded now — the booking is marked Payment Pending and charged at check-out."}
+              </p>
             </div>
+            {form.paymentOption === "pay_at_checkin" && (
+              <div className="space-y-2">
+                <Label>Payment Method</Label>
+                <Select value={form.paymentMethod} onValueChange={v => setForm({...form, paymentMethod: v})}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">Cash</SelectItem>
+                    <SelectItem value="credit_card">Credit Card</SelectItem>
+                    <SelectItem value="debit_card">Debit Card</SelectItem>
+                    <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Notes</Label>
               <Input value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} placeholder="Optional notes" />

@@ -117,3 +117,21 @@ export function capitalize(str: string): string {
 export function asArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
 }
+
+/**
+ * Races a promise against a hard timeout so a stalled network/Firestore
+ * call can never leave a "Processing…" button spinning forever. Firestore's
+ * runTransaction() retries internally on contention and, on a genuinely
+ * dead connection, can take a long time to surface an error — this gives
+ * every caller a predictable upper bound and a clear, actionable message
+ * instead of an indefinite hang.
+ */
+export function withTimeout<T>(promise: Promise<T>, ms: number, message = "This is taking longer than expected. Please check your connection and try again."): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms);
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (err) => { clearTimeout(timer); reject(err); }
+    );
+  });
+}

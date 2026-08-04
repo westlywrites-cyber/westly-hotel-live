@@ -1,11 +1,11 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCollection, useDocument } from "@/hooks/useFirebase";
 import { runTransaction, doc, collection, serverTimestamp } from "firebase/firestore";
 import { ref, set } from "firebase/database";
 import { db, rtdb } from "@/lib/firebase";
 import { logAction } from "@/lib/audit";
-import { notifyCheckOut } from "@/lib/notifications";
+import { notifyCheckOut, notifyPaymentReceived } from "@/lib/notifications";
 import { pushActivity } from "@/hooks/useRealtime";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,7 @@ import { Search, LogOut, Loader2, CheckCircle, BedDouble, Calendar } from "lucid
 import { DataError } from "@/components/ui/data-error";
 import {
   formatDateTime, formatCurrency, toFirestoreDate, nightsBetween,
-  toDateTimeLocalValue, parseDateTimeLocal, combineDateAndTime,
+  toDateTimeLocalValue, parseDateTimeLocal, combineDateAndTime, withTimeout,
 } from "@/lib/utils";
 import { where } from "firebase/firestore";
 import { format } from "date-fns";
@@ -52,6 +52,11 @@ export default function CheckOutPage() {
   const [checkOutDateTime, setCheckOutDateTime] = useState("");
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState<any>(null);
+  // Synchronous re-entrancy guard — see WalkInPage.tsx for why this is
+  // needed in addition to the `loading` state: a fast double-click can fire
+  // handleCheckOut twice before the button re-renders as disabled, which
+  // for payments specifically risks recording the room charge twice.
+  const submittingRef = useRef(false);
 
   // Open the dialog for a booking, seeding the exact check-out date/time.
   // Defaults to today's date at the hotel's official check-out time (the
@@ -79,14 +84,33 @@ export default function CheckOutPage() {
     );
   }, [bookings, search]);
 
+  // Whether the room charge was already collected — either at check-in
+  // ("Pay at Check-In") or during a prior check-out attempt. Bookings that
+  // predate this field (roomPaymentStatus undefined) fall through to the
+  // pre-existing behavior of charging at check-out, so nothing changes for
+  // stays already in progress.
+  const roomAlreadyPaid = (booking: any) => booking.roomPaymentStatus === "paid";
+
+  // Full cost of the stay (room + any extras) — shown to the guest for
+  // transparency regardless of when the room portion was actually paid.
   const totalDue = (booking: any) => {
     const base = booking.totalAmount || 0;
     const extra = parseFloat(extraCharges) || 0;
     return base + extra;
   };
 
+  // What actually needs to be charged/recorded AT check-out: extras are
+  // always due now; the room charge is only due now if it wasn't already
+  // collected at check-in. This is what prevents the room payment from
+  // ever being recorded a second time.
+  const dueAtCheckout = (booking: any) => {
+    const extra = parseFloat(extraCharges) || 0;
+    return roomAlreadyPaid(booking) ? extra : totalDue(booking);
+  };
+
   const handleCheckOut = async () => {
     if (!selectedBooking || !adminUser) return;
+    if (submittingRef.current) return; // already in flight — ignore the double-fire
 
     // Exact check-out date/time entered by the Receptionist (defaults to
     // today + the Super Admin's official check-out time, but editable to
@@ -102,13 +126,28 @@ export default function CheckOutPage() {
       return;
     }
 
+    submittingRef.current = true;
     setLoading(true);
 
     try {
+      // finalAmount = full stay cost (room + extras), shown to the guest.
+      // amountToCharge = what's actually still owed right now — excludes
+      // the room charge if it was already paid at check-in. This is the
+      // fix for the duplicate-payment bug: a booking checked in with
+      // "Pay at Check-In" already has a room_payment/walk_in_payment
+      // record and roomPaymentStatus "paid", so only extras (if any) are
+      // charged here; a booking checked in with "Pay at Check-Out" (or a
+      // legacy booking with no roomPaymentStatus at all) is charged in
+      // full, exactly as before.
       const finalAmount = totalDue(selectedBooking);
+      const alreadyPaid = roomAlreadyPaid(selectedBooking);
+      const amountToCharge = dueAtCheckout(selectedBooking);
 
       // ── Firestore Transaction: all writes are atomic ─────────────────────
-      await runTransaction(db, async (transaction) => {
+      // Wrapped in withTimeout so a stalled connection surfaces a clear,
+      // actionable error after 20s instead of leaving the button stuck on
+      // "Processing…" indefinitely.
+      await withTimeout(runTransaction(db, async (transaction) => {
         const bookingRef = doc(db, "bookings", selectedBooking.id);
         const bookingSnap = await transaction.get(bookingRef);
 
@@ -124,7 +163,13 @@ export default function CheckOutPage() {
           checkedOutByName: adminUser.name,
           finalAmount,
           extraCharges: parseFloat(extraCharges) || 0,
-          paymentMethod,
+          // Only overwrite the payment method if a new payment is actually
+          // being recorded now — otherwise keep whatever was recorded at
+          // check-in so the booking's own history stays accurate.
+          paymentMethod: amountToCharge > 0 ? paymentMethod : (currentData.paymentMethod ?? paymentMethod),
+          // Settled in full now, regardless of when the room portion was
+          // actually collected.
+          roomPaymentStatus: "paid",
           checkOutNotes: notes || null,
           updatedAt: serverTimestamp(),
         });
@@ -162,6 +207,8 @@ export default function CheckOutPage() {
           baseAmount: selectedBooking.totalAmount || 0,
           extraCharges: parseFloat(extraCharges) || 0,
           finalAmount,
+          roomChargedAtCheckout: !alreadyPaid,
+          amountChargedNow: amountToCharge,
           paymentMethod,
           staffId: adminUser.id,
           staffName: adminUser.name,
@@ -169,28 +216,34 @@ export default function CheckOutPage() {
           isDeleted: false,
         });
 
-        // 4. Create payment record
-        const paymentRef = doc(collection(db, "payments"));
-        transaction.set(paymentRef, {
-          bookingId: selectedBooking.id,
-          guestName: selectedBooking.guestName,
-          roomNumber: selectedBooking.roomNumber,
-          amount: finalAmount,
-          paymentMethod,
-          type: "room_payment",
-          recordedBy: adminUser.id,
-          recordedByName: adminUser.name,
-          createdAt: serverTimestamp(),
-          // Every payment starts as Pending Approval — it only counts as
-          // company revenue once the Accountant reviews and approves it.
-          approvalStatus: "pending",
-          approvedBy: null,
-          approvedByName: null,
-          approvedAt: null,
-          rejectedReason: null,
-          isDeleted: false,
-        });
-      });
+        // 4. Create a payment record for whatever is still outstanding —
+        // the room charge only if it wasn't already paid at check-in, plus
+        // any extras. If the room was paid at check-in AND there are no
+        // extras, nothing is owed now, so no payment record (and no
+        // duplicate accountant approval request) is created at all.
+        if (amountToCharge > 0) {
+          const paymentRef = doc(collection(db, "payments"));
+          transaction.set(paymentRef, {
+            bookingId: selectedBooking.id,
+            guestName: selectedBooking.guestName,
+            roomNumber: selectedBooking.roomNumber,
+            amount: amountToCharge,
+            paymentMethod,
+            type: "room_payment",
+            recordedBy: adminUser.id,
+            recordedByName: adminUser.name,
+            createdAt: serverTimestamp(),
+            // Every payment starts as Pending Approval — it only counts as
+            // company revenue once the Accountant reviews and approves it.
+            approvalStatus: "pending",
+            approvedBy: null,
+            approvedByName: null,
+            approvedAt: null,
+            rejectedReason: null,
+            isDeleted: false,
+          });
+        }
+      }), 20000);
       // ── Transaction complete ─────────────────────────────────────────────
 
       // Post-transaction non-atomic operations (best-effort)
@@ -205,6 +258,13 @@ export default function CheckOutPage() {
 
       notifyCheckOut(selectedBooking.guestName, selectedBooking.roomNumber, adminUser.name).catch(() => {});
 
+      // Alert the Accountant (and finance team) only when a payment was
+      // actually recorded just now — if the room was already paid at
+      // check-in and there are no extras, there's nothing to approve.
+      if (amountToCharge > 0) {
+        notifyPaymentReceived(selectedBooking.guestName, amountToCharge, paymentMethod, adminUser.name).catch(() => {});
+      }
+
       pushActivity({
         message: `${adminUser.name} checked out ${selectedBooking.guestName} (Room ${selectedBooking.roomNumber})`,
         type: "check_out",
@@ -212,17 +272,23 @@ export default function CheckOutPage() {
         userId: adminUser.id,
       }).catch(() => {});
 
-      setSuccess({ booking: selectedBooking, amount: finalAmount, time: format(checkOutAtDate, "h:mm a") });
+      setSuccess({ booking: selectedBooking, amount: finalAmount, amountChargedNow: amountToCharge, time: format(checkOutAtDate, "h:mm a") });
       closeDialog();
       setExtraCharges("");
       setNotes("");
 
-      toast({ title: "Check-Out Complete", description: `${selectedBooking.guestName} has checked out.` });
+      toast({
+        title: "Check-Out Complete",
+        description: amountToCharge > 0
+          ? `${selectedBooking.guestName} has checked out. Payment sent to the Accountant for approval.`
+          : `${selectedBooking.guestName} has checked out. Room was already paid at check-in.`,
+      });
       notifyTaskComplete();
     } catch (err: any) {
-      toast({ title: "Check-Out Failed", description: err.message, variant: "destructive" });
+      toast({ title: "Check-Out Failed", description: err.message || "Something went wrong. Please try again.", variant: "destructive" });
     } finally {
       setLoading(false);
+      submittingRef.current = false;
     }
   };
 
@@ -240,7 +306,11 @@ export default function CheckOutPage() {
           <p className="text-sm text-muted-foreground">Room has been queued for cleaning.</p>
         </div>
         <div className="bg-muted rounded-xl p-4 text-sm text-left space-y-2">
-          <div className="flex justify-between"><span className="text-muted-foreground">Payment</span><span className="font-bold">{formatCurrency(success.amount)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Total Stay Cost</span><span className="font-bold">{formatCurrency(success.amount)}</span></div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Charged at Check-Out</span>
+            <span className="font-bold">{success.amountChargedNow > 0 ? formatCurrency(success.amountChargedNow) : "None — paid at check-in"}</span>
+          </div>
           <div className="flex justify-between"><span className="text-muted-foreground">Method</span><span className="capitalize">{paymentMethod}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Time</span><span>{success.time}</span></div>
         </div>
@@ -308,6 +378,11 @@ export default function CheckOutPage() {
                       <span>Due: {formatDateTime(toFirestoreDate(booking.checkOut))}</span>
                     </div>
                     <p className="text-sm font-bold mt-0.5">{formatCurrency(booking.totalAmount || 0)}</p>
+                    {roomAlreadyPaid(booking) ? (
+                      <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">Paid at Check-In</span>
+                    ) : (
+                      <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400">Payment Pending</span>
+                    )}
                   </div>
                 </div>
               </CardContent>
@@ -316,7 +391,7 @@ export default function CheckOutPage() {
         </div>
       )}
 
-      {/* Check-Out Dialog */}
+    {/* Check-Out Dialog */}
       {selectedBooking && (
         <Dialog open={!!selectedBooking} onOpenChange={() => closeDialog()}>
           <DialogContent>
@@ -327,14 +402,25 @@ export default function CheckOutPage() {
               <div className="bg-muted rounded-lg p-4 space-y-2 text-sm">
                 <div className="flex justify-between"><span className="text-muted-foreground">Guest</span><span className="font-medium">{selectedBooking.guestName}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Room</span><span>Room {selectedBooking.roomNumber}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Room Charges</span><span>{formatCurrency(selectedBooking.totalAmount || 0)}</span></div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Room Charges</span>
+                  <span>
+                    {formatCurrency(selectedBooking.totalAmount || 0)}
+                    {roomAlreadyPaid(selectedBooking) && <span className="text-green-600 font-medium"> (paid at check-in)</span>}
+                  </span>
+                </div>
                 {parseFloat(extraCharges) > 0 && (
                   <div className="flex justify-between text-orange-600"><span>Extra Charges</span><span>+{formatCurrency(parseFloat(extraCharges))}</span></div>
                 )}
                 <div className="flex justify-between font-bold border-t pt-2 mt-2 border-border">
-                  <span>Total Due</span>
-                  <span>{formatCurrency(totalDue(selectedBooking))}</span>
+                  <span>Due Now</span>
+                  <span>{formatCurrency(dueAtCheckout(selectedBooking))}</span>
                 </div>
+                {roomAlreadyPaid(selectedBooking) && (
+                  <p className="text-xs text-muted-foreground">
+                    The room charge was already recorded at check-in and won't be charged again — only extra charges (if any) are due now.
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">

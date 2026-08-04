@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCollection, useDocument } from "@/hooks/useFirebase";
 import { runTransaction, doc, collection, serverTimestamp, writeBatch } from "firebase/firestore";
@@ -6,7 +6,7 @@ import { ref, set } from "firebase/database";
 import { db, rtdb } from "@/lib/firebase";
 import { logAction } from "@/lib/audit";
 import {
-  notifyCheckIn, notifyBookingApproval, notifyBookingCancelled, notifyBookingModified,
+  notifyCheckIn, notifyBookingApproval, notifyBookingCancelled, notifyBookingModified, notifyPaymentReceived,
 } from "@/lib/notifications";
 import { pushActivity } from "@/hooks/useRealtime";
 import { Card, CardContent } from "@/components/ui/card";
@@ -16,11 +16,12 @@ import { Label } from "@/components/ui/label";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Search, UserCheck, Loader2, CheckCircle, Calendar, BedDouble, XCircle, Clock, Globe } from "lucide-react";
 import {
   formatDate, formatDateTime, formatCurrency, toFirestoreDate,
-  toDateTimeLocalValue, parseDateTimeLocal, combineDateAndTime,
+  toDateTimeLocalValue, parseDateTimeLocal, combineDateAndTime, withTimeout,
 } from "@/lib/utils";
 import { where } from "firebase/firestore";
 import { format, addDays } from "date-fns";
@@ -64,9 +65,19 @@ export default function RoomReservationsPage() {
   const [idDocRef, setIdDocRef] = useState("");
   const [notes, setNotes] = useState("");
   const [checkInDateTime, setCheckInDateTime] = useState("");
+  const [paymentOption, setPaymentOption] = useState("pay_at_checkin");
+  const [paymentMethod, setPaymentMethod] = useState("cash");
   const [loading, setLoading] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [success, setSuccess] = useState<any>(null);
+  // Synchronous re-entrancy guard — see WalkInPage.tsx for why this is
+  // needed in addition to the `loading` state: React state updates aren't
+  // synchronous, so a fast double-click can fire handleCheckIn twice before
+  // the button re-renders as disabled. That race — two overlapping
+  // transactions, one of which finishes and flips `loading` back to false
+  // while the other is still writing — is what produced bookings that
+  // either saved but stayed on "Processing…", or never saved at all.
+  const submittingRef = useRef(false);
 
   const canManage = role === "super_admin" || role === "manager" || role === "receptionist";
 
@@ -125,6 +136,8 @@ export default function RoomReservationsPage() {
   const handleSelectBooking = (booking: any) => {
     setSelectedBooking(booking);
     setCheckInDateTime(toDateTimeLocalValue(new Date()));
+    setPaymentOption("pay_at_checkin");
+    setPaymentMethod("cash");
   };
 
   const closeDialog = () => {
@@ -170,6 +183,7 @@ export default function RoomReservationsPage() {
 
   const handleCheckIn = async () => {
     if (!selectedBooking || !adminUser) return;
+    if (submittingRef.current) return; // already in flight — ignore the double-fire
 
     // Exact check-in date/time entered by the Receptionist.
     const checkInAtDate = parseDateTimeLocal(checkInDateTime);
@@ -182,11 +196,20 @@ export default function RoomReservationsPage() {
       return;
     }
 
+    submittingRef.current = true;
     setLoading(true);
+
+    // Guest pays now, or the charge is deferred to check-out. Recorded on
+    // the booking so Check-Out knows whether the room charge has already
+    // been collected and must never charge (or send for approval) twice.
+    const payAtCheckIn = paymentOption === "pay_at_checkin";
 
     try {
       // ── Firestore Transaction: all operations are atomic ─────────────────
-      await runTransaction(db, async (transaction) => {
+      // Wrapped in withTimeout so a stalled connection surfaces a clear,
+      // actionable error after 20s instead of leaving the button stuck on
+      // "Processing…" indefinitely.
+      await withTimeout(runTransaction(db, async (transaction) => {
         const bookingRef = doc(db, "bookings", selectedBooking.id);
         const bookingSnap = await transaction.get(bookingRef);
 
@@ -209,6 +232,14 @@ export default function RoomReservationsPage() {
           checkedInByName: adminUser.name,
           idDocumentRef: idDocRef || null,
           checkInNotes: notes || null,
+          // Payment option chosen by the Receptionist at check-in, and
+          // whether the room charge has actually been recorded yet. This is
+          // what Check-Out reads to decide whether the room charge is still
+          // due — it's the single source of truth that prevents the room
+          // payment from ever being recorded a second time at check-out.
+          paymentOption,
+          paymentMethod: payAtCheckIn ? paymentMethod : (currentBooking.paymentMethod ?? null),
+          roomPaymentStatus: payAtCheckIn ? "paid" : "pending",
           updatedAt: serverTimestamp(),
         });
 
@@ -250,7 +281,34 @@ export default function RoomReservationsPage() {
           notes: notes || null,
           isDeleted: false,
         });
-      });
+
+        // 3b. Create a payment record — only when the guest is paying now.
+        // "Pay at Check-Out" defers this entirely; Check-Out is the one
+        // place that will ever create a payment for this booking, so there
+        // is exactly one room-payment record per stay either way.
+        if (payAtCheckIn) {
+          const paymentRef = doc(collection(db, "payments"));
+          transaction.set(paymentRef, {
+            bookingId: selectedBooking.id,
+            guestName: selectedBooking.guestName,
+            roomNumber: selectedBooking.roomNumber,
+            amount: selectedBooking.totalAmount || 0,
+            paymentMethod,
+            type: "room_payment",
+            recordedBy: adminUser.id,
+            recordedByName: adminUser.name,
+            createdAt: serverTimestamp(),
+            // Every payment starts as Pending Approval — it only counts as
+            // company revenue once the Accountant reviews and approves it.
+            approvalStatus: "pending",
+            approvedBy: null,
+            approvedByName: null,
+            approvedAt: null,
+            rejectedReason: null,
+            isDeleted: false,
+          });
+        }
+      }), 20000);
       // ── Transaction complete ─────────────────────────────────────────────
 
       // 4. Realtime DB — room status (non-atomic, best-effort)
@@ -272,6 +330,13 @@ export default function RoomReservationsPage() {
       // 6. Notification (non-atomic, non-blocking)
       notifyCheckIn(selectedBooking.guestName, selectedBooking.roomNumber, adminUser.name).catch(() => {});
 
+      // 6b. Alert the Accountant (and finance team) only when a payment was
+      // actually recorded — "Pay at Check-Out" guests generate no payment
+      // yet, so no approval request should go out until they actually pay.
+      if (payAtCheckIn) {
+        notifyPaymentReceived(selectedBooking.guestName, selectedBooking.totalAmount || 0, paymentMethod, adminUser.name).catch(() => {});
+      }
+
       // 7. Activity feed
       pushActivity({
         message: `${adminUser.name} checked in ${selectedBooking.guestName} (Room ${selectedBooking.roomNumber})`,
@@ -283,16 +348,23 @@ export default function RoomReservationsPage() {
       setSuccess({
         booking: { ...selectedBooking, checkOut: entitledCheckOut },
         checkInTime: format(checkInAtDate, "h:mm a"),
+        payAtCheckIn,
       });
       closeDialog();
       setIdDocRef("");
       setNotes("");
 
-      toast({ title: "Check-In Complete", description: `${selectedBooking.guestName} has been checked in.` });
+      toast({
+        title: "Check-In Complete",
+        description: payAtCheckIn
+          ? `${selectedBooking.guestName} has been checked in. Payment sent to the Accountant for approval.`
+          : `${selectedBooking.guestName} has been checked in. Payment will be collected at check-out.`,
+      });
     } catch (err: any) {
-      toast({ title: "Check-In Failed", description: err.message, variant: "destructive" });
+      toast({ title: "Check-In Failed", description: err.message || "Something went wrong. Please try again.", variant: "destructive" });
     } finally {
       setLoading(false);
+      submittingRef.current = false;
     }
   };
 
@@ -312,13 +384,16 @@ export default function RoomReservationsPage() {
         <div className="bg-muted rounded-xl p-4 text-sm text-left space-y-2">
           <div className="flex justify-between"><span className="text-muted-foreground">Room Type</span><span>{success.booking.roomType}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Guest May Stay Until</span><span>{formatDateTime(toFirestoreDate(success.booking.checkOut))}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Total</span><span className="font-bold">{formatCurrency(success.booking.totalAmount || 0)}</span></div>
+          {success.payAtCheckIn ? (
+            <div className="flex justify-between"><span className="text-muted-foreground">Total Paid</span><span className="font-bold">{formatCurrency(success.booking.totalAmount || 0)}</span></div>
+          ) : (
+            <div className="flex justify-between"><span className="text-muted-foreground">Payment</span><span className="font-bold text-orange-600">{formatCurrency(success.booking.totalAmount || 0)} due at check-out</span></div>
+          )}
         </div>
         <Button onClick={() => setSuccess(null)} className="w-full">Check In Another Guest</Button>
       </div>
     );
   }
-
   return (
     <div className="space-y-5 max-w-3xl">
       <div>
@@ -515,6 +590,37 @@ export default function RoomReservationsPage() {
                   onChange={e => setIdDocRef(e.target.value)}
                 />
               </div>
+
+              <div className="space-y-2">
+                <Label>Payment Option *</Label>
+                <Select value={paymentOption} onValueChange={setPaymentOption}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pay_at_checkin">Pay at Check-In</SelectItem>
+                    <SelectItem value="pay_at_checkout">Pay at Check-Out</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {paymentOption === "pay_at_checkin"
+                    ? "Payment is recorded now and sent to the Accountant for approval."
+                    : "No payment is recorded now — the booking is marked Payment Pending and charged at check-out."}
+                </p>
+              </div>
+
+              {paymentOption === "pay_at_checkin" && (
+                <div className="space-y-2">
+                  <Label>Payment Method</Label>
+                  <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cash">Cash</SelectItem>
+                      <SelectItem value="credit_card">Credit Card</SelectItem>
+                      <SelectItem value="debit_card">Debit Card</SelectItem>
+                      <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label>Notes (optional)</Label>
