@@ -27,17 +27,34 @@ const PAGE_SIZE = 60;
  * Realtime notification feed for the signed-in user, scoped to their role.
  * Super Admins implicitly see everything (their role is always included in
  * every notify() call's target list check below), everyone else only sees
- * notifications addressed to their role or directly to their user id.
+ * notifications addressed to their role OR directly to their user id.
+ *
+ * TWO LIVE QUERIES, MERGED — a single Firestore query can't OR across two
+ * different array fields (`forRoles` vs `forUserIds`), so this subscribes to
+ * both and merges by doc id. This matters because a large share of
+ * notifications in this app are targeted ONLY via forUserIds with an empty
+ * forRoles ([]) — shift assigned/updated/cancelled, room assigned/
+ * reassigned/ended, housekeeping task queued (incl. the automatic
+ * pre-checkout reminder), and task assigned/reassigned all do this (see
+ * src/lib/notifications.ts). A single query filtering on
+ * `where("forRoles", "array-contains", role)` never matches those docs at
+ * all — Firestore's array-contains never matches an empty array — so every
+ * one of those notifications was silently invisible to its recipient. The
+ * client-side `forUserIds` filter further down in this file was dead code
+ * for non-super_admin users as a result: it never got a chance to run
+ * because the query itself excluded the docs before they reached it.
  */
 export function useNotifications() {
   const { adminUser, role } = useAuth();
-  const [all, setAll] = useState<AppNotification[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [byRole, setByRole] = useState<AppNotification[]>([]);
+  const [byUser, setByUser] = useState<AppNotification[]>([]);
+  const [loadingRole, setLoadingRole] = useState(true);
+  const [loadingUser, setLoadingUser] = useState(true);
 
   useEffect(() => {
     if (!adminUser || !role) {
-      setAll([]);
-      setLoading(false);
+      setByRole([]);
+      setLoadingRole(false);
       return;
     }
     // super_admin always sees everything; everyone else is filtered by role membership.
@@ -54,14 +71,50 @@ export function useNotifications() {
     const unsub = onSnapshot(
       q,
       (snap) => {
-        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as AppNotification);
-        setAll(list);
-        setLoading(false);
+        setByRole(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as AppNotification));
+        setLoadingRole(false);
       },
-      () => setLoading(false)
+      () => setLoadingRole(false)
     );
     return unsub;
   }, [adminUser?.id, role]);
+
+  useEffect(() => {
+    // super_admin's role-scoped query above already returns every
+    // notification, so a second forUserIds subscription would be redundant.
+    if (!adminUser || !role || role === "super_admin") {
+      setByUser([]);
+      setLoadingUser(false);
+      return;
+    }
+    const q = query(
+      collection(db, "notifications"),
+      where("forUserIds", "array-contains", adminUser.id),
+      orderBy("createdAt", "desc"),
+      limit(PAGE_SIZE)
+    );
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        setByUser(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as AppNotification));
+        setLoadingUser(false);
+      },
+      () => setLoadingUser(false)
+    );
+    return unsub;
+  }, [adminUser?.id, role]);
+
+  const loading = loadingRole || loadingUser;
+  const all = useMemo(() => {
+    const merged = new Map<string, AppNotification>();
+    for (const n of byRole) merged.set(n.id, n);
+    for (const n of byUser) merged.set(n.id, n);
+    return Array.from(merged.values()).sort((a, b) => {
+      const at = a.createdAt?.toDate?.().getTime() ?? 0;
+      const bt = b.createdAt?.toDate?.().getTime() ?? 0;
+      return bt - at;
+    });
+  }, [byRole, byUser]);
 
   const notifications = useMemo(() => {
     if (!adminUser) return [];

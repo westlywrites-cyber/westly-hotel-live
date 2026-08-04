@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import RoomSearchSelect from "@/components/admin/RoomSearchSelect";
 import { useToast } from "@/hooks/use-toast";
 import { usePinTaskComplete } from "@/hooks/usePinTaskComplete";
 import { UserPlus, Loader2, CheckCircle, BedDouble } from "lucide-react";
@@ -224,7 +225,7 @@ export default function WalkInPage() {
             rejectedReason: null,
             isDeleted: false,
           });
-        }
+          }
       }), 20000);
       // ── Transaction complete ─────────────────────────────────────────────
 
@@ -299,6 +300,7 @@ export default function WalkInPage() {
       </div>
     );
   }
+
   return (
     <div className="space-y-5 max-w-3xl">
       <div>
@@ -340,16 +342,16 @@ export default function WalkInPage() {
           <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2 md:col-span-2">
               <Label>Select Room *</Label>
-              <Select required value={form.roomId} onValueChange={v => setForm({...form, roomId: v})} disabled={roomsLoading}>
-                <SelectTrigger><SelectValue placeholder={roomsLoading ? "Loading rooms…" : "Choose available room…"} /></SelectTrigger>
-                <SelectContent>
-                  {rooms.map((room: any) => (
-                    <SelectItem key={room.id} value={room.id}>
-                      Room {room.number} — {room.type} ({formatCurrency(room.price)}/night)
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {/* Searchable by room number, name, type, or status — instead of
+                  scrolling a plain dropdown through the entire room list
+                  (Requirement: "Room Search During Check-In"). */}
+              <RoomSearchSelect
+                rooms={rooms}
+                value={form.roomId}
+                onChange={roomId => setForm({ ...form, roomId })}
+                loading={roomsLoading}
+                placeholder="Search available rooms by number, name, or type…"
+              />
               {roomsError && (
                 <p className="text-xs text-destructive">Couldn't load rooms. Check your connection and reload.</p>
               )}

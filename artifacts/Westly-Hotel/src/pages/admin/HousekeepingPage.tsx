@@ -87,11 +87,11 @@ function MyHousekeepingDashboard() {
   const { isPinSession, endingSession, notifyTaskComplete } = usePinTaskComplete();
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const { data: queue, loading: queueLoading, error: queueError } = useCollection<any>(
+  const { data: queue, loading: queueLoading, error: queueError, refetch: refetchQueue } = useCollection<any>(
     "housekeeping_tasks",
     adminUser ? [where("assignedTo", "==", adminUser.id), where("status", "in", ["pending", "in_progress"]), orderBy("scheduledFor", "asc")] : []
   );
-  const { data: assignments, loading: roomsLoading, error: roomsError } = useCollection<any>(
+  const { data: assignments, loading: roomsLoading, error: roomsError, refetch: refetchRooms } = useCollection<any>(
     "room_assignments",
     adminUser ? [where("housekeeperId", "==", adminUser.id), where("status", "==", "active")] : []
   );
@@ -172,7 +172,14 @@ function MyHousekeepingDashboard() {
   };
 
   const error = queueError || roomsError;
-  if (error) return <DataError message="We couldn't load your housekeeping dashboard." />;
+  if (error) {
+    return (
+      <DataError
+        message="We couldn't load your housekeeping dashboard."
+        onRetry={() => { refetchQueue(); refetchRooms(); }}
+      />
+    );
+  }
 
   return (
     <div className="space-y-5">
@@ -246,7 +253,6 @@ function MyHousekeepingDashboard() {
             </div>
           )}
         </TabsContent>
-
         <TabsContent value="rooms" className="mt-4">
           {roomsLoading ? (
             <div className="flex items-center justify-center h-32">
@@ -320,7 +326,7 @@ function HousekeepingOverview() {
   const { toast } = useToast();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [runningQueue, setRunningQueue] = useState(false);
-  const { data: rooms, loading, error } = useCollection<any>("rooms", [where("isDeleted", "!=", true)]);
+  const { data: rooms, loading, error, refetch } = useCollection<any>("rooms", [where("isDeleted", "!=", true)]);
   const { data: unassigned } = useCollection<any>(
     "housekeeping_tasks",
     [where("assignedTo", "==", null), where("status", "==", "pending")]
@@ -389,7 +395,7 @@ function HousekeepingOverview() {
     }
   };
 
-  if (error) return <DataError message="We couldn't load room status." />;
+  if (error) return <DataError message="We couldn't load room status." onRetry={refetch} />;
 
   return (
     <div className="space-y-5">
