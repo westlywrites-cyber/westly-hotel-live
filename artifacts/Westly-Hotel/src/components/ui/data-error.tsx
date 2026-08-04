@@ -11,10 +11,20 @@ import { Button } from "@/components/ui/button";
  */
 export function DataError({
   message,
+  detail,
   onRetry,
   className = "",
 }: {
   message?: string | null;
+  /**
+   * The raw Firestore error (e.g. `.code` like "permission-denied" or
+   * "failed-precondition", or `.message`). Optional — shown as a small
+   * monospace line so a screenshot from a phone (no devtools access) is
+   * enough to diagnose whether a failure is a security-rules denial, a
+   * missing composite index, or something else, instead of everyone having
+   * to guess from a generic "couldn't load" message alone.
+   */
+  detail?: string | null;
   onRetry?: () => void;
   className?: string;
 }) {
@@ -28,6 +38,11 @@ export function DataError({
       <p className="text-muted-foreground text-xs max-w-sm">
         {message || "Something went wrong while fetching this. Check your connection and try again."}
       </p>
+      {detail && (
+        <p className="text-muted-foreground/70 text-[10px] font-mono max-w-sm break-words">
+          {detail}
+        </p>
+      )}
       <Button
         type="button"
         variant="outline"

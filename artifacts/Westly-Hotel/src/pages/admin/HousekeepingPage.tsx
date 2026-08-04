@@ -176,6 +176,7 @@ function MyHousekeepingDashboard() {
     return (
       <DataError
         message="We couldn't load your housekeeping dashboard."
+        detail={`${(queueError as any)?.code || (roomsError as any)?.code || ""} ${error.message || ""}`.trim()}
         onRetry={() => { refetchQueue(); refetchRooms(); }}
       />
     );
@@ -395,7 +396,7 @@ function HousekeepingOverview() {
     }
   };
 
-  if (error) return <DataError message="We couldn't load room status." onRetry={refetch} />;
+  if (error) return <DataError message="We couldn't load room status." detail={`${(error as any)?.code || ""} ${error.message || ""}`.trim()} onRetry={refetch} />;
 
   return (
     <div className="space-y-5">
