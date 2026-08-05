@@ -27,8 +27,12 @@ export default function ShiftSchedulingPage() {
   const [dialogDefaultDate, setDialogDefaultDate] = useState<string | undefined>();
   const [editingShift, setEditingShift] = useState<ShiftDoc | null>(null);
 
+  // depsKey: without this, useCollection only notices a query's SHAPE
+  // changing (same two `where` clauses either way), not the VALUE of
+  // `role` — so switching the role dropdown silently kept showing
+  // whichever role's staff loaded first instead of refetching.
   const { data: employees, loading: loadingEmployees } = useCollection<any>(
-    "users", [where("role", "==", role), where("status", "==", "active")]
+    "users", [where("role", "==", role), where("status", "==", "active")], role
   );
 
   const range = useMemo(() => {
@@ -42,9 +46,12 @@ export default function ShiftSchedulingPage() {
   const queryStart = format(addDays(range.start, -1), "yyyy-MM-dd");
   const queryEnd = format(range.end, "yyyy-MM-dd");
 
+  // Same depsKey issue as employees above — also needs to re-subscribe
+  // when role OR the visible date range changes.
   const { data: shiftsRaw, loading: loadingShifts, error } = useCollection<ShiftDoc>(
     "shifts",
-    [where("role", "==", role), where("date", ">=", queryStart), where("date", "<=", queryEnd)]
+    [where("role", "==", role), where("date", ">=", queryStart), where("date", "<=", queryEnd)],
+    `${role}:${queryStart}:${queryEnd}`
   );
 
   const shifts = useMemo(() => shiftsRaw.filter(s => s.status !== "cancelled"), [shiftsRaw]);
