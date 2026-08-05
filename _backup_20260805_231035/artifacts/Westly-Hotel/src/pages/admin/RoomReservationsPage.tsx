@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCollection, useDocument } from "@/hooks/useFirebase";
 import { runTransaction, doc, collection, serverTimestamp, writeBatch } from "firebase/firestore";
@@ -78,37 +78,6 @@ export default function RoomReservationsPage() {
   // while the other is still writing — is what produced bookings that
   // either saved but stayed on "Processing…", or never saved at all.
   const submittingRef = useRef(false);
-
-  // ── "Is this actually stuck?" guard ────────────────────────────────────
-  // Root cause of a real support issue: on a slow connection, check-in can
-  // legitimately take a while — but the transaction is a single continuous
-  // request, NOT tied to this page staying open. If someone refreshes or
-  // navigates away because it "looks frozen," the request keeps running on
-  // the server and still saves moments later — just with no one left on
-  // screen to see the confirmation. Two things address that: (1) warn
-  // before an actual browser refresh/close while a save is in flight, and
-  // (2) reassure the user it's still working instead of just spinning
-  // silently, so they're less tempted to bail out early.
-  const [longWait, setLongWait] = useState(false);
-
-  useEffect(() => {
-    if (!loading) {
-      setLongWait(false);
-      return;
-    }
-    const t = setTimeout(() => setLongWait(true), 6000);
-    return () => clearTimeout(t);
-  }, [loading]);
-
-  useEffect(() => {
-    const handler = (e: BeforeUnloadEvent) => {
-      if (!loading) return;
-      e.preventDefault();
-      e.returnValue = ""; // required for Chrome to show the confirmation prompt
-    };
-    window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
-  }, [loading]);
 
   const canManage = role === "super_admin" || role === "manager" || role === "receptionist";
 
@@ -425,7 +394,6 @@ export default function RoomReservationsPage() {
       </div>
     );
   }
-
   return (
     <div className="space-y-5 max-w-3xl">
       <div>
@@ -663,13 +631,8 @@ export default function RoomReservationsPage() {
                 />
               </div>
             </div>
-            {longWait && (
-              <p className="text-xs text-amber-600 text-center -mt-1">
-                Still working — please don't refresh or leave this page. This can take longer on a slow connection.
-              </p>
-            )}
             <DialogFooter>
-              <Button variant="outline" onClick={() => closeDialog()} disabled={loading}>Cancel</Button>
+              <Button variant="outline" onClick={() => closeDialog()}>Cancel</Button>
               <Button onClick={handleCheckIn} disabled={loading || !checkInDateTime || !entitledCheckOut} className="gap-2">
                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserCheck className="w-4 h-4" />}
                 {loading ? "Processing…" : "Complete Check-In"}

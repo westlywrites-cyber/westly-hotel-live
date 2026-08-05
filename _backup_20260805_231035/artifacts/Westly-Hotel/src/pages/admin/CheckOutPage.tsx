@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCollection, useDocument } from "@/hooks/useFirebase";
 import { runTransaction, doc, collection, serverTimestamp } from "firebase/firestore";
@@ -57,33 +57,6 @@ export default function CheckOutPage() {
   // handleCheckOut twice before the button re-renders as disabled, which
   // for payments specifically risks recording the room charge twice.
   const submittingRef = useRef(false);
-
-  // ── "Is this actually stuck?" guard — same fix as RoomReservationsPage's
-  // check-in flow, for the identical reported symptom on check-out: a slow
-  // connection makes the save legitimately take a while, and refreshing or
-  // leaving mid-save doesn't cancel it — it just removes the person who'd
-  // have seen the confirmation. Warn before an accidental refresh, and
-  // reassure instead of silently spinning.
-  const [longWait, setLongWait] = useState(false);
-
-  useEffect(() => {
-    if (!loading) {
-      setLongWait(false);
-      return;
-    }
-    const t = setTimeout(() => setLongWait(true), 6000);
-    return () => clearTimeout(t);
-  }, [loading]);
-
-  useEffect(() => {
-    const handler = (e: BeforeUnloadEvent) => {
-      if (!loading) return;
-      e.preventDefault();
-      e.returnValue = "";
-    };
-    window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
-  }, [loading]);
 
   // Open the dialog for a booking, seeding the exact check-out date/time.
   // Defaults to today's date at the hotel's official check-out time (the
@@ -418,7 +391,7 @@ export default function CheckOutPage() {
         </div>
       )}
 
-      {/* Check-Out Dialog */}
+    {/* Check-Out Dialog */}
       {selectedBooking && (
         <Dialog open={!!selectedBooking} onOpenChange={() => closeDialog()}>
           <DialogContent>
@@ -494,13 +467,8 @@ export default function CheckOutPage() {
                 <Input placeholder="Any notes" value={notes} onChange={e => setNotes(e.target.value)} />
               </div>
             </div>
-            {longWait && (
-              <p className="text-xs text-amber-600 text-center -mt-1">
-                Still working — please don't refresh or leave this page. This can take longer on a slow connection.
-              </p>
-            )}
             <DialogFooter>
-              <Button variant="outline" onClick={() => closeDialog()} disabled={loading}>Cancel</Button>
+              <Button variant="outline" onClick={() => closeDialog()}>Cancel</Button>
               <Button onClick={handleCheckOut} disabled={loading || !checkOutDateTime} className="gap-2">
                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />}
                 {loading ? "Processing…" : "Complete Check-Out"}
