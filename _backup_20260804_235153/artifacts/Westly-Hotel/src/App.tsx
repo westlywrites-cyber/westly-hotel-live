@@ -42,7 +42,6 @@ import UsersPage from "@/pages/admin/UsersPage";
 import RolesPage from "@/pages/admin/RolesPage";
 import ReportsPage from "@/pages/admin/ReportsPage";
 import AuditLogPage from "@/pages/admin/AuditLogPage";
-import DiagnosticsPage from "@/pages/admin/DiagnosticsPage";
 import DeletedRecordsPage from "@/pages/admin/DeletedRecordsPage";
 import CMSPage from "@/pages/admin/CMSPage";
 import FacilitiesManagementPage from "@/pages/admin/FacilitiesManagementPage";
@@ -137,7 +136,6 @@ function ProtectedRoute({
     );
   };
 }
-
 // ── Public route wrapper (no auth required) ───────────────────────────────────
 function PublicRoute({ component: Component }: { component: React.ComponentType<any> }) {
   return function PublicRouteWrapper(props: any) {
@@ -205,7 +203,6 @@ function Router() {
       <Route path="/admin/roles" component={ProtectedRoute({ component: RolesPage, allowedRoles: ["super_admin"] })} />
       <Route path="/admin/reports" component={ProtectedRoute({ component: ReportsPage, allowedRoles: ["super_admin", "manager", "accountant"] })} />
       <Route path="/admin/audit-log" component={ProtectedRoute({ component: AuditLogPage, allowedRoles: ["super_admin"] })} />
-      <Route path="/admin/diagnostics" component={ProtectedRoute({ component: DiagnosticsPage, allowedRoles: ["super_admin"] })} />
       <Route path="/admin/deleted-records" component={ProtectedRoute({ component: DeletedRecordsPage, allowedRoles: ["super_admin"] })} />
       <Route path="/admin/cms" component={ProtectedRoute({ component: CMSPage, allowedRoles: ["super_admin"] })} />
       <Route path="/admin/facilities" component={ProtectedRoute({ component: FacilitiesManagementPage, allowedRoles: ["super_admin", "manager"] })} />

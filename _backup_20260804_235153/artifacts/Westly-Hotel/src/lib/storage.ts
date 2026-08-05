@@ -1,5 +1,4 @@
 import { supabase, isSupabaseConfigured } from "./supabase";
-import { logUploadError } from "./diagnostics";
 
 // ══════════════════════════════════════════════════════════════════════════
 // IMAGE UPLOADS — Supabase Storage, used ONLY by the features that used to
@@ -62,7 +61,6 @@ function randomId(): string {
  */
 export async function uploadImage(file: File, folder: ImageFolder): Promise<string> {
   if (!isSupabaseConfigured || !supabase) {
-    logUploadError("image_upload", new Error("Supabase Storage is not configured"), folder);
     throw new ImageUploadError(
       "Image uploads aren't connected yet. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY."
     );
@@ -81,9 +79,6 @@ export async function uploadImage(file: File, folder: ImageFolder): Promise<stri
     contentType: file.type,
   });
   if (error) {
-    // Only genuine upload failures are logged here — the validation checks
-    // above (wrong type, too large) are expected user input, not bugs.
-    logUploadError("image_upload", error, folder);
     throw new ImageUploadError(error.message || "Upload failed. Please try again.");
   }
 

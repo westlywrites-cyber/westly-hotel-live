@@ -151,19 +151,6 @@ service cloud.firestore {
       return isManagement() || isOperationsManager();
     }
 
-    // Bookings/reservations readers: the roles directly responsible for
-    // reservations or room management (Super Admin, Manager, Operations
-    // Manager, Receptionist), plus Accountant — who does NOT manage
-    // bookings, but legitimately reads them read-only for revenue figures
-    // on ReportsPage/FinancialReportsPage (already gated to Accountant at
-    // the route level). Everyone else — Waiter, Housekeeping, Staff, Bar
-    // Attendant, Laundry Valet, Gym Staff, and the frontline ops roles —
-    // is excluded, closing the gap where isAnyAdmin() previously let any
-    // signed-in staff role read every guest's booking history.
-    function isBookingsReader() {
-      return isFrontDesk() || isOperationsManager() || isAccountant();
-    }
-
     // Anyone who oversees gym operations end-to-end (Super Admin, Manager,
     // Operations Manager) — same "management + ops manager" shape as
     // housekeeping, since these are the roles the spec calls out as needing
@@ -341,20 +328,8 @@ service cloud.firestore {
       // Only super_admin may create rooms.
       allow create: if isSuperAdmin();
 
-      // Room status / data updates: super_admin, manager, receptionist,
-      // operations_manager (who oversees the Housekeeping Overview's "Mark
-      // Clean" / "Send to Maintenance" actions — pre-existing gap: they had
-      // route access to /admin/housekeeping but were never in this rule),
-      // and housekeeping. NOTE: housekeeping is intentionally NOT limited
-      // here to only their currently-assigned rooms — MaintenancePage lets
-      // any housekeeping user flag/resolve maintenance on ANY room (a
-      // separate, already-scoped feature of its own — see /maintenance
-      // below), and that flow updates a room's status via this same rule.
-      // Requirement 1's "no other rooms visible/accessible" is enforced by
-      // removing housekeeping's access to the full Rooms admin page/nav
-      // (see App.tsx + AdminShell.tsx) and to /housekeeping_tasks and
-      // /room_assignments (below), not by narrowing this shared rule.
-      allow update: if isManagement() || isReceptionist() || isOperationsManager() || isHousekeeping();
+      // Room status / data updates: super_admin, manager, receptionist, housekeeping.
+      allow update: if isSuperAdmin() || isManager() || isReceptionist() || isHousekeeping();
 
       // Hard-delete never allowed.
       allow delete: if false;
@@ -374,7 +349,7 @@ service cloud.firestore {
     // BOOKINGS
     // ══════════════════════════════════════════════════════════════════════════
     match /bookings/{bookingId} {
-      allow read:   if isBookingsReader();
+      allow read:   if isAnyAdmin();
       // Staff (front desk) create confirmed/walk-in bookings; the public
       // website may also create its own 'pending' request, validated above.
       allow create: if isFrontDesk() || isValidPublicBooking();
@@ -500,51 +475,6 @@ service cloud.firestore {
       allow create: if isAnyAdmin();   // any admin may append
       allow update: if false;          // immutable once written
       allow delete: if false;          // permanent record
-    }
-
-    // ══════════════════════════════════════════════════════════════════════════
-    // DIAGNOSTIC LOGS — Application Diagnostics & Error Monitoring
-    // (src/lib/diagnostics.ts writes here; src/pages/admin/DiagnosticsPage.tsx
-    // is the only reader.)
-    //
-    // Writes are allowed from ANY client, signed in or not — errors on the
-    // public guest site (a booking that fails, an image that won't upload)
-    // happen before any admin auth exists, and those are exactly the errors
-    // this system needs to see. isValidDiagnosticLog() keeps that open write
-    // path from becoming an abuse vector: strict field allow-list, capped
-    // string lengths, and severity/category restricted to known enum values.
-    // Reading the collection back — where the actual error content and any
-    // user attribution becomes visible — is Super Admin only. Nothing here
-    // is ever modified except the `resolved` flag, and only by a Super Admin
-    // triaging the dashboard.
-    // ══════════════════════════════════════════════════════════════════════════
-    function isValidDiagnosticLog() {
-      let d = request.resource.data;
-      return d.keys().hasOnly([
-            'message', 'category', 'severity', 'source', 'action', 'stack',
-            'rootCause', 'suggestion', 'metadata', 'route', 'userId',
-            'userName', 'userRole', 'browser', 'resolved', 'timestamp'
-          ])
-        && d.keys().hasAll(['message', 'category', 'severity', 'resolved', 'timestamp'])
-        && d.message is string && d.message.size() > 0 && d.message.size() <= 2000
-        && d.category in [
-            'render', 'javascript', 'api', 'firebase_auth', 'firestore_permission',
-            'firestore_query', 'realtime_sync', 'supabase', 'image_upload',
-            'file_upload', 'network', 'routing', 'performance', 'background_job', 'other'
-          ]
-        && d.severity in ['info', 'warning', 'error', 'critical']
-        && d.resolved == false
-        && (!('stack' in d) || d.stack == null || (d.stack is string && d.stack.size() <= 4000));
-    }
-
-    match /diagnostic_logs/{logId} {
-      allow read:   if isSuperAdmin();
-      allow create: if isValidDiagnosticLog();
-      // Only a Super Admin triaging the dashboard may flip the resolved flag,
-      // and only that one field — never rewrite the recorded error itself.
-      allow update: if isSuperAdmin()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['resolved']);
-      allow delete: if isSuperAdmin();
     }
 
     // ══════════════════════════════════════════════════════════════════════════

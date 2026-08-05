@@ -1,16 +1,8 @@
-import { useEffect } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Hotel, Home } from "lucide-react";
-import { logRoutingError } from "@/lib/diagnostics";
 
 export default function NotFound() {
-  // Records which unmatched URL was hit — a stale bookmark, a broken link
-  // elsewhere in the app, or a recently renamed/removed route all land here.
-  useEffect(() => {
-    logRoutingError(window.location.pathname);
-  }, []);
-
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background p-8">
       <div className="text-center space-y-6 max-w-md">

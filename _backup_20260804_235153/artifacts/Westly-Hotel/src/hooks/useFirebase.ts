@@ -11,7 +11,6 @@ import {
   documentId,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { logFirestoreError } from "@/lib/diagnostics";
 
 /**
  * Subscribe to a Firestore collection (with optional query constraints).
@@ -84,7 +83,6 @@ export function useCollection<T extends { id?: string }>(
       (err) => {
         if (cancelled) return;
         console.error(`[useCollection] Error fetching ${collectionName}:`, err);
-        logFirestoreError("query", collectionName, err, "useCollection listener");
         setError(err);
         setLoading(false);
         // Don't leave stale/cached data on screen when a query is denied or
@@ -117,7 +115,7 @@ export function useCollection<T extends { id?: string }>(
   }, [collectionName, constraintsKey, retryTick]);
 
   return { data, loading, error, refetch };
-}
+  }
 
 /**
  * Subscribe to a specific, known set of documents by ID — for when a
@@ -175,7 +173,6 @@ export function useDocumentsByIds<T extends { id?: string }>(
         (err) => {
           if (cancelled) return;
           console.error(`[useDocumentsByIds] Error fetching ${collectionName}:`, err);
-          logFirestoreError("query", collectionName, err, "useDocumentsByIds listener");
           setError(err);
           setLoading(false);
           setData([]);
@@ -225,7 +222,6 @@ export function useDocument<T extends { id?: string }>(
       },
       (err) => {
         console.error(`[useDocument] Error fetching ${collectionName}/${documentId}:`, err);
-        logFirestoreError("query", collectionName, err, `useDocument listener (${documentId})`);
         setError(err);
         setLoading(false);
       }

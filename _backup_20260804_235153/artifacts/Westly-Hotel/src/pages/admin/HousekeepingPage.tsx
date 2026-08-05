@@ -24,7 +24,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DataError } from "@/components/ui/data-error";
-import { logBackgroundJobFailure } from "@/lib/diagnostics";
 import { PinSessionEndingOverlay } from "@/components/admin/PinSessionEndingOverlay";
 
 function fmtWhen(v: any): string {
@@ -255,7 +254,6 @@ function MyHousekeepingDashboard() {
             </div>
           )}
         </TabsContent>
-
         <TabsContent value="rooms" className="mt-4">
           {roomsLoading ? (
             <div className="flex items-center justify-center h-32">
@@ -352,7 +350,6 @@ function HousekeepingOverview() {
         description: `${result.checkoutTasksCreated} checkout + ${result.occupiedServiceTasksCreated} occupied-service task(s) created.`,
       });
     } catch (err: any) {
-      logBackgroundJobFailure("housekeeping-queue-run-now", err);
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
       setRunningQueue(false);

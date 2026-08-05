@@ -1,23 +1,33 @@
 import { auth } from "./firebase";
+import { logApiError } from "./diagnostics";
 
 async function callAdminFunction<T>(name: string, payload: unknown): Promise<T> {
-  const currentUser = auth.currentUser;
-  if (!currentUser) throw new Error("You must be signed in to do this.");
+  try {
+    const currentUser = auth.currentUser;
+    if (!currentUser) throw new Error("You must be signed in to do this.");
 
-  const idToken = await currentUser.getIdToken();
+    const idToken = await currentUser.getIdToken();
 
-  const res = await fetch(`/api/${name}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${idToken}`,
-    },
-    body: JSON.stringify(payload),
-  });
+    const res = await fetch(`/api/${name}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${idToken}`,
+      },
+      body: JSON.stringify(payload),
+    });
 
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.error || "Something went wrong.");
-  return data as T;
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.error || "Something went wrong.");
+    return data as T;
+  } catch (error) {
+    // Logged here (the single choke point for every admin function call)
+    // rather than in each exported helper below, then re-thrown unchanged
+    // so existing callers' try/catch and toast handling keep working exactly
+    // as before.
+    logApiError(name, error, "callAdminFunction");
+    throw error;
+  }
 }
 
 export function createUserAccount(input: {

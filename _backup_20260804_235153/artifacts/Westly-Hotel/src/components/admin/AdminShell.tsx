@@ -16,7 +16,6 @@ import {
   UserCheck, ShoppingCart, BookOpen, BarChart2, Archive,
   Building2, Utensils, Globe, PackageSearch, Images, MessageSquareText,
   Download, Mail, ShieldOff, Wine, Shirt, CalendarClock, Landmark, Dumbbell,
-  Activity,
 } from "lucide-react";
 import type { Role } from "@/lib/rbac";
 
@@ -134,7 +133,6 @@ const NAV: NavItem[] = [
   { label: "Staff Performance", href: "/admin/staff-performance", icon: BarChart2, roles: ["super_admin", "manager"] },
   { label: "Users & Roles", href: "/admin/users", icon: UserCog, roles: ["super_admin"] },
   { label: "Audit Log", href: "/admin/audit-log", icon: History, roles: ["super_admin"] },
-  { label: "Diagnostics", href: "/admin/diagnostics", icon: Activity, roles: ["super_admin"] },
   { label: "Deleted Records", href: "/admin/deleted-records", icon: Archive, roles: ["super_admin"] },
   { label: "Website CMS", href: "/admin/cms", icon: BookOpen, roles: ["super_admin"] },
   { label: "Facilities", href: "/admin/facilities", icon: Building2, roles: ["super_admin", "manager"] },

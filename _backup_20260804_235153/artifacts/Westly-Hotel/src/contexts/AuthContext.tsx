@@ -4,7 +4,6 @@ import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import type { Role } from "@/lib/rbac";
 import { useLocation } from "wouter";
-import { setDiagnosticsContext, clearDiagnosticsContext, logAuthError } from "@/lib/diagnostics";
 
 export interface AdminUser {
   id: string;
@@ -83,20 +82,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               // state — is the single source of truth for session type, so
               // it survives page refreshes and is visible to security rules.
               setSessionType(tokenResult.claims.pinSession ? "pin" : "full");
-              // Every diagnostic captured from here on is attributed to this
-              // user/role automatically — see src/lib/diagnostics.ts.
-              setDiagnosticsContext({ userId: admin.id, userName: admin.name, userRole: admin.role });
             }
           } else {
             // Firebase auth user exists but no admin record
             setAdminUser(null);
             setRole(null);
             setSessionType(null);
-            clearDiagnosticsContext();
           }
         } catch (error) {
           console.error("Error fetching admin data:", error);
-          logAuthError(error as Error, "Resolve admin profile on auth state change");
           setAdminUser(null);
           setRole(null);
           setSessionType(null);
@@ -105,7 +99,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setAdminUser(null);
         setRole(null);
         setSessionType(null);
-        clearDiagnosticsContext();
       }
 
       setIsLoading(false);
@@ -120,7 +113,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAdminUser(null);
     setRole(null);
     setSessionType(null);
-    clearDiagnosticsContext();
     // A PIN terminal should return to the PIN keypad, not the staff email
     // login screen — it's a shared device, not any one person's session.
     setLocation(wasPin ? "/admin/pin" : "/admin/login");
