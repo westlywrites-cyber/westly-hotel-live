@@ -43,7 +43,6 @@ import RolesPage from "@/pages/admin/RolesPage";
 import ReportsPage from "@/pages/admin/ReportsPage";
 import AuditLogPage from "@/pages/admin/AuditLogPage";
 import DiagnosticsPage from "@/pages/admin/DiagnosticsPage";
-import BugManagementPage from "@/pages/admin/BugManagementPage";
 import DeletedRecordsPage from "@/pages/admin/DeletedRecordsPage";
 import CMSPage from "@/pages/admin/CMSPage";
 import FacilitiesManagementPage from "@/pages/admin/FacilitiesManagementPage";
@@ -207,7 +206,6 @@ function Router() {
       <Route path="/admin/reports" component={ProtectedRoute({ component: ReportsPage, allowedRoles: ["super_admin", "manager", "accountant"] })} />
       <Route path="/admin/audit-log" component={ProtectedRoute({ component: AuditLogPage, allowedRoles: ["super_admin"] })} />
       <Route path="/admin/diagnostics" component={ProtectedRoute({ component: DiagnosticsPage, allowedRoles: ["super_admin"] })} />
-      <Route path="/admin/bug-management" component={ProtectedRoute({ component: BugManagementPage, allowedRoles: ["super_admin"] })} />
       <Route path="/admin/deleted-records" component={ProtectedRoute({ component: DeletedRecordsPage, allowedRoles: ["super_admin"] })} />
       <Route path="/admin/cms" component={ProtectedRoute({ component: CMSPage, allowedRoles: ["super_admin"] })} />
       <Route path="/admin/facilities" component={ProtectedRoute({ component: FacilitiesManagementPage, allowedRoles: ["super_admin", "manager"] })} />

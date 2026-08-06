@@ -16,10 +16,9 @@ import {
   UserCheck, ShoppingCart, BookOpen, BarChart2, Archive,
   Building2, Utensils, Globe, PackageSearch, Images, MessageSquareText,
   Download, Mail, ShieldOff, Wine, Shirt, CalendarClock, Landmark, Dumbbell,
-  Activity, Bug,
+  Activity,
 } from "lucide-react";
 import type { Role } from "@/lib/rbac";
-import { useCriticalBugWatcher } from "@/hooks/useCriticalBugWatcher";
 
 interface NavItem {
   label: string;
@@ -136,7 +135,6 @@ const NAV: NavItem[] = [
   { label: "Users & Roles", href: "/admin/users", icon: UserCog, roles: ["super_admin"] },
   { label: "Audit Log", href: "/admin/audit-log", icon: History, roles: ["super_admin"] },
   { label: "Diagnostics", href: "/admin/diagnostics", icon: Activity, roles: ["super_admin"] },
-  { label: "Bug Management", href: "/admin/bug-management", icon: Bug, roles: ["super_admin"] },
   { label: "Deleted Records", href: "/admin/deleted-records", icon: Archive, roles: ["super_admin"] },
   { label: "Website CMS", href: "/admin/cms", icon: BookOpen, roles: ["super_admin"] },
   { label: "Facilities", href: "/admin/facilities", icon: Building2, roles: ["super_admin", "manager"] },
@@ -214,11 +212,6 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   // Powers the "Messages" sidebar badge — same realtime Supabase feed the
   // Message Inbox page uses, so the count updates live without polling.
   const { unreadCount: unreadMessages } = useMessages();
-
-  // Bug Management Center — real-time critical-bug alerting for Super Admins
-  // only, active anywhere in the admin panel (not just the Bug Management
-  // page itself). See src/hooks/useCriticalBugWatcher.ts.
-  useCriticalBugWatcher(role === "super_admin");
 
   const navWithBadges = useMemo(
     () => NAV.map((item) => (item.href === "/admin/messages" ? { ...item, badgeCount: unreadMessages } : item)),

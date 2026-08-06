@@ -47,8 +47,7 @@ export type NotificationType =
   | "task_assigned" | "task_reassigned" | "task_completed" | "task_overdue"
   | "shift_assigned" | "shift_updated" | "shift_cancelled"
   | "gym_membership_registered" | "gym_membership_renewed" | "gym_membership_expiring"
-  | "gym_membership_suspended" | "gym_check_in" | "gym_check_out"
-  | "critical_bug_detected";
+  | "gym_membership_suspended" | "gym_check_in" | "gym_check_out";
 
 export interface NotifyParams {
   type: NotificationType;
@@ -667,18 +666,4 @@ export function notifyStaffAlert(title: string, message: string, severity: Notif
 
 export function notifySystemAlert(title: string, message: string, severity: NotificationSeverity = "critical") {
   return notify({ type: "system_alert", title, message, forRoles: ["super_admin"], severity, link: "/admin/dashboard" });
-}
-
-// Bug Management Center — fired the moment a Super Admin session observes a
-// new critical-severity bug (see src/hooks/useCriticalBugWatcher.ts). Routed
-// to the dedicated Bug Management Center page, not the Diagnostics page.
-export function notifyCriticalBug(title: string, module: string, occurrences: number) {
-  return notify({
-    type: "critical_bug_detected",
-    title: "Critical Bug Detected",
-    message: `${title} (${module})${occurrences > 1 ? ` — ${occurrences} occurrences` : ""}`,
-    forRoles: ["super_admin"],
-    severity: "critical",
-    link: "/admin/bug-management",
-  });
 }

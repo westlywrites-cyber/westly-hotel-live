@@ -549,60 +549,6 @@ service cloud.firestore {
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    // BUG MANAGEMENT CENTER — dedicated module, separate from Diagnostics above.
-    // (src/lib/bugTracker.ts writes bug_events; the Bug Management Center page
-    // at src/pages/admin/BugManagementPage.tsx groups them and is the only
-    // writer of `bugs`. Super Admin only, everywhere.)
-    //
-    //   • bug_events — raw, immutable, one per detected occurrence. Same
-    //     "open create, validated shape, Super-Admin-only read" pattern as
-    //     diagnostic_logs, and for the same reason: a public guest hitting a
-    //     broken booking flow before any admin session exists must still be
-    //     captured. Never updated once written; a Super Admin may delete for
-    //     cleanup.
-    //   • bugs — one curated document per grouped bug (status, priority,
-    //     assignment, history). Written ONLY by a Super Admin session — the
-    //     automatic capture path (bug_events) never touches this collection
-    //     directly, so an anonymous/public write can never influence a bug's
-    //     triage state.
-    // ══════════════════════════════════════════════════════════════════════════
-    function isValidBugEvent() {
-      let d = request.resource.data;
-      return d.keys().hasOnly([
-            'fingerprint', 'title', 'message', 'category', 'severity', 'module',
-            'page', 'component', 'functionInvolved', 'stack', 'rootCause',
-            'suggestion', 'metadata', 'userId', 'userName', 'userRole',
-            'browserName', 'os', 'deviceType', 'userAgent', 'appVersion',
-            'buildVersion', 'timestamp'
-          ])
-        && d.keys().hasAll(['fingerprint', 'title', 'message', 'category', 'severity', 'module', 'timestamp'])
-        && d.fingerprint is string && d.fingerprint.size() > 0 && d.fingerprint.size() <= 100
-        && d.title is string && d.title.size() > 0 && d.title.size() <= 500
-        && d.message is string && d.message.size() > 0 && d.message.size() <= 2000
-        && d.severity in ['info', 'warning', 'error', 'critical']
-        && (!('stack' in d) || d.stack == null || (d.stack is string && d.stack.size() <= 4000));
-    }
-
-    match /bug_events/{eventId} {
-      allow read:   if isSuperAdmin();
-      allow create: if isValidBugEvent();
-      allow update: if false; // immutable occurrence record
-      allow delete: if isSuperAdmin();
-    }
-
-    function isValidBug() {
-      let d = request.resource.data;
-      return d.status in ['new', 'investigating', 'in_progress', 'fixed', 'verified', 'closed', 'ignored', 'duplicate']
-        && d.priority in ['urgent', 'high', 'medium', 'low'];
-    }
-
-    match /bugs/{fingerprint} {
-      allow read:                if isSuperAdmin();
-      allow create, update:      if isSuperAdmin() && isValidBug();
-      allow delete:               if isSuperAdmin();
-    }
-
-    // ══════════════════════════════════════════════════════════════════════════
     // DELETED RECORDS — soft-delete archive; only super_admin may restore/purge
     // ══════════════════════════════════════════════════════════════════════════
     match /deleted_records/{recordId} {

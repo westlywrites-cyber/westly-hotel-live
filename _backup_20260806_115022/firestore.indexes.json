@@ -305,20 +305,6 @@
           "order": "ASCENDING"
         }
       ]
-    },
-    {
-      "collectionGroup": "bug_events",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "severity",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "timestamp",
-          "order": "DESCENDING"
-        }
-      ]
     }
   ],
   "fieldOverrides": []

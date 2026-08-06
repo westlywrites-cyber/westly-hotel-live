@@ -1,6 +1,5 @@
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { db } from "./firebase";
-import { recordBugEvent } from "./bugTracker";
 
 // ══════════════════════════════════════════════════════════════════════════
 // APPLICATION DIAGNOSTICS & ERROR MONITORING
@@ -183,10 +182,6 @@ export async function captureError(input: DiagnosticLogInput): Promise<void> {
     const signature = `${input.category}:${input.source ?? ""}:${input.message}`.slice(0, 300);
     if (!shouldLog(signature)) return;
 
-    const route = typeof window !== "undefined" ? window.location.pathname : null;
-    const browser = getBrowserInfo();
-    const suggestion = input.suggestion ?? deriveSuggestion(input.category, input.message, input.rootCause);
-
     await addDoc(collection(db, "diagnostic_logs"), {
       message: (input.message || "Unknown error").slice(0, 2000),
       category: input.category,
@@ -195,22 +190,16 @@ export async function captureError(input: DiagnosticLogInput): Promise<void> {
       action: input.action ?? null,
       stack: input.stack ? input.stack.slice(0, 4000) : null,
       rootCause: input.rootCause ?? null,
-      suggestion,
+      suggestion: input.suggestion ?? deriveSuggestion(input.category, input.message, input.rootCause),
       metadata: input.metadata ?? null,
-      route,
+      route: typeof window !== "undefined" ? window.location.pathname : null,
       userId: context.userId ?? null,
       userName: context.userName ?? null,
       userRole: context.userRole ?? null,
-      browser,
+      browser: getBrowserInfo(),
       resolved: false,
       timestamp: serverTimestamp(),
     });
-
-    // Bug Management Center — dedicated module, separate collection. Fed
-    // automatically from this single detection funnel (see src/lib/bugTracker.ts
-    // for why this is the only call site needed). Fire-and-forget: a bug
-    // tracking failure must never affect diagnostics or the caller.
-    recordBugEvent({ ...input, severity, suggestion, route, browser, ...context }).catch(() => {});
   } catch (err) {
     // Diagnostics must never throw or recurse into itself.
     console.error("[Diagnostics] Failed to write diagnostic log:", err);
@@ -522,10 +511,9 @@ function installUiUxDetectors() {
   console.error = (...args: unknown[]) => {
     try {
       const message = args.map((a) => (a instanceof Error ? a.message : String(a))).join(" ").slice(0, 500);
-      // Never capture diagnostics'/the bug tracker's own internal failure
-      // logs — that would feed a failed write straight back into another
-      // write attempt.
-      if (!message.startsWith("[Diagnostics]") && !message.startsWith("[BugTracker]") && !isSuppressedConsoleNoise(message)) {
+      // Never capture diagnostics' own internal failure log — that would
+      // feed a failed write straight back into another write attempt.
+      if (!message.startsWith("[Diagnostics]") && !isSuppressedConsoleNoise(message)) {
         captureError({ message, category: "console", severity: "error", source: window.location.pathname, action: "console.error" });
       }
     } catch {
@@ -536,7 +524,7 @@ function installUiUxDetectors() {
   console.warn = (...args: unknown[]) => {
     try {
       const message = args.map((a) => (a instanceof Error ? a.message : String(a))).join(" ").slice(0, 500);
-      if (!message.startsWith("[BugTracker]") && !isSuppressedConsoleNoise(message)) {
+      if (!isSuppressedConsoleNoise(message)) {
         captureError({ message, category: "console", severity: "info", source: window.location.pathname, action: "console.warn" });
       }
     } catch {

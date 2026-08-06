@@ -6,7 +6,7 @@ import {
   Banknote, Receipt, RotateCcw, ReceiptText, PackageSearch, PackageCheck,
   Sparkles, CheckCircle2, DoorOpen, Wrench, ShieldCheck, AlertTriangle,
   Star, Mail, ShieldAlert, Siren, Trash2, CheckCheck, Shirt, ClipboardList,
-  ClipboardCheck, ClipboardX, Dumbbell, Bug,
+  ClipboardCheck, ClipboardX, Dumbbell,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -44,7 +44,6 @@ const TYPE_ICON: Record<NotificationType, React.ComponentType<any>> = {
   new_review: Star,
   contact_message: Mail,
   system_alert: Siren,
-  critical_bug_detected: Bug,
   task_assigned: ClipboardList,
   task_reassigned: ClipboardList,
   task_completed: ClipboardCheck,
