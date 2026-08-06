@@ -11,13 +11,7 @@ const firebaseConfig = {
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "463072974738",
   appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:463072974738:web:a99931d0f3d06c5dd6534b",
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-XVHT1B163M",
-  // Falls back to the correct region-specific RTDB URL (europe-west1) if
-  // VITE_FIREBASE_DATABASE_URL isn't set. The old default-region format
-  // (`https://<project>-default-rtdb.firebaseio.com`) triggers Firebase's
-  // "Database lives in a different region" warning on every connection and
-  // pays a real latency penalty, because the actual database instance is
-  // hosted in europe-west1, not the default region that hostname implies.
-  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || "https://westly-hotel-default-rtdb.europe-west1.firebasedatabase.app",
+  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || "https://westly-hotel-default-rtdb.firebaseio.com",
 };
 
 export const app = initializeApp(firebaseConfig);

@@ -489,23 +489,6 @@ function installUiUxDetectors() {
   // Console capture — funnels console.error / console.warn into the
   // dashboard so they aren't silently lost outside DevTools. Wrapped so a
   // failure here can never recurse or throw.
-  //
-  // NOISE FILTER: the Firestore SDK itself calls console.warn constantly
-  // for internal, self-recovering connection churn (WebChannelConnection
-  // 'Write'/'Listen' stream reconnects) — completely normal on flaky mobile
-  // networks or a backgrounded tab, and NOT a sign anything is broken. Each
-  // one carries a unique stream id, so simple dedupe doesn't catch it as a
-  // repeat. Left uncaptured, this alone floods the dashboard and buries
-  // real issues. Matched by pattern (not by source) so it's filtered
-  // regardless of which page it fires on.
-  const SUPPRESSED_CONSOLE_PATTERNS: RegExp[] = [
-    /WebChannelConnection.*transport errored/i,
-    /WebChannelConnection.*RPC '(Write|Listen)'/i,
-  ];
-  function isSuppressedConsoleNoise(message: string): boolean {
-    return SUPPRESSED_CONSOLE_PATTERNS.some((re) => re.test(message));
-  }
-
   const origError = console.error;
   const origWarn = console.warn;
   console.error = (...args: unknown[]) => {
@@ -513,7 +496,7 @@ function installUiUxDetectors() {
       const message = args.map((a) => (a instanceof Error ? a.message : String(a))).join(" ").slice(0, 500);
       // Never capture diagnostics' own internal failure log — that would
       // feed a failed write straight back into another write attempt.
-      if (!message.startsWith("[Diagnostics]") && !isSuppressedConsoleNoise(message)) {
+      if (!message.startsWith("[Diagnostics]")) {
         captureError({ message, category: "console", severity: "error", source: window.location.pathname, action: "console.error" });
       }
     } catch {
@@ -524,9 +507,7 @@ function installUiUxDetectors() {
   console.warn = (...args: unknown[]) => {
     try {
       const message = args.map((a) => (a instanceof Error ? a.message : String(a))).join(" ").slice(0, 500);
-      if (!isSuppressedConsoleNoise(message)) {
-        captureError({ message, category: "console", severity: "info", source: window.location.pathname, action: "console.warn" });
-      }
+      captureError({ message, category: "console", severity: "info", source: window.location.pathname, action: "console.warn" });
     } catch {
       // never let capture break the original console call
     }
