@@ -528,10 +528,9 @@ service cloud.firestore {
         && d.keys().hasAll(['message', 'category', 'severity', 'resolved', 'timestamp'])
         && d.message is string && d.message.size() > 0 && d.message.size() <= 2000
         && d.category in [
-            'render', 'javascript', 'console', 'api', 'firebase_auth', 'firestore_permission',
+            'render', 'javascript', 'api', 'firebase_auth', 'firestore_permission',
             'firestore_query', 'realtime_sync', 'supabase', 'image_upload',
-            'file_upload', 'network', 'routing', 'performance', 'background_job',
-            'ui_issue', 'ux_issue', 'stuck_loading', 'other'
+            'file_upload', 'network', 'routing', 'performance', 'background_job', 'other'
           ]
         && d.severity in ['info', 'warning', 'error', 'critical']
         && d.resolved == false

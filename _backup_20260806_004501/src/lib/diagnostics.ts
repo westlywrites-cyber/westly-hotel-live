@@ -28,7 +28,6 @@ export type ErrorSeverity = "info" | "warning" | "error" | "critical";
 export type ErrorCategory =
   | "render"               // component failed to render (ErrorBoundary)
   | "javascript"           // uncaught JS runtime error / unhandled rejection
-  | "console"              // console.error / console.warn calls
   | "api"                  // Netlify function / REST API request failure
   | "firebase_auth"        // authentication / authorization errors
   | "firestore_permission" // Firestore permission-denied
@@ -41,9 +40,6 @@ export type ErrorCategory =
   | "routing"              // unknown route / navigation failure
   | "performance"          // slow load / long task
   | "background_job"       // failed scheduled task / queue run
-  | "ui_issue"             // broken layout, overflow, missing states, broken images
-  | "ux_issue"             // confusing/incomplete interaction flows
-  | "stuck_loading"        // operation never exited its loading state
   | "other";
 
 export interface DiagnosticContext {
@@ -159,18 +155,6 @@ function deriveSuggestion(category: ErrorCategory, message: string, rootCause?: 
   }
   if (category === "render") {
     return "Check the component stack below for the exact component that threw, and look for undefined data being accessed before a Firestore listener has loaded.";
-  }
-  if (category === "stuck_loading") {
-    return "This action's loading state outlived its own operation. Check that every code path (success, error, and early return) reaches a `finally` that clears the loading flag, and that the underlying promise actually settles — wrap it with withTimeout() from src/lib/utils.ts, or migrate the handler to useAsyncAction() in src/hooks/useAsyncAction.ts, which does this automatically.";
-  }
-  if (category === "ui_issue") {
-    return "Check the affected route at the recorded viewport width — likely a fixed-width element, missing responsive class, or a broken image URL.";
-  }
-  if (category === "ux_issue") {
-    return "Review the interaction flow on the affected route for a missing loading/empty/success/error state — see if useAsyncAction() should back this action instead.";
-  }
-  if (category === "console") {
-    return "Check the browser console for full context around this message — repeated console errors often indicate a state update on an unmounted component or a missing null-check.";
   }
   return "Reproduce the action and check the browser console / Netlify function logs for the full stack trace.";
 }
@@ -327,91 +311,6 @@ export function logNetworkOffline() {
   });
 }
 
-// ── UI / UX issue reporting ──────────────────────────────────────────────
-export function logUiIssue(message: string, source?: string, metadata?: Record<string, unknown>) {
-  return captureError({
-    message,
-    category: "ui_issue",
-    severity: "warning",
-    source,
-    metadata,
-  });
-}
-
-export function logUxIssue(message: string, source?: string, action?: string, metadata?: Record<string, unknown>) {
-  return captureError({
-    message,
-    category: "ux_issue",
-    severity: "info",
-    source,
-    action,
-    metadata,
-  });
-}
-
-/**
- * Reports a "stuck on Processing…" bug: a loading state that outlived its
- * own operation. This is the single most requested diagnostic — call it
- * whenever a tracked operation blows past its expected duration without
- * resolving OR rejecting. useAsyncAction() (src/hooks/useAsyncAction.ts)
- * calls this automatically; call it directly from any hand-rolled loading
- * state (e.g. a `setTimeout` watchdog around a manual `setLoading(true)`).
- */
-export function logStuckLoading(operation: string, elapsedMs: number, source?: string, metadata?: Record<string, unknown>) {
-  return captureError({
-    message: `"${operation}" is still in a loading state after ${Math.round(elapsedMs / 1000)}s — the operation may have completed or failed without updating the UI.`,
-    category: "stuck_loading",
-    severity: "error",
-    source,
-    action: operation,
-    metadata: { elapsedMs, ...metadata },
-  });
-}
-
-// ── Stuck-operation watchdog registry ────────────────────────────────────
-// A lightweight, framework-agnostic way to flag any async operation that
-// never reaches a resolved/rejected end state within a reasonable window —
-// independent of React re-renders, so it still fires even if the component
-// that started the operation has already unmounted (which is itself often
-// *why* the UI looks stuck: the state update landed on a gone component).
-const activeOperations = new Map<string, { operation: string; source?: string; startedAt: number; timer: ReturnType<typeof setTimeout> }>();
-let opCounter = 0;
-
-/** Call when a tracked async operation starts. Returns a token for endOperation(). */
-export function startOperation(operation: string, source?: string, timeoutMs = 20_000): string {
-  const token = `op_${++opCounter}_${Date.now()}`;
-  const startedAt = Date.now();
-  const timer = setTimeout(() => {
-    if (activeOperations.has(token)) {
-      logStuckLoading(operation, Date.now() - startedAt, source);
-    }
-  }, timeoutMs);
-  activeOperations.set(token, { operation, source, startedAt, timer });
-  return token;
-}
-
-/** Call when a tracked async operation settles (success OR failure). */
-export function endOperation(token: string) {
-  const entry = activeOperations.get(token);
-  if (!entry) return;
-  clearTimeout(entry.timer);
-  activeOperations.delete(token);
-}
-
-/**
- * Wraps any promise (component handler, service function, background job)
- * with the stuck-operation watchdog, without needing a React hook. Use this
- * in non-component code such as src/lib/*.ts service functions.
- */
-export async function traceAsync<T>(operation: string, promise: Promise<T>, source?: string, timeoutMs = 20_000): Promise<T> {
-  const token = startOperation(operation, source, timeoutMs);
-  try {
-    return await promise;
-  } finally {
-    endOperation(token);
-  }
-}
-
 // ── Global handlers ───────────────────────────────────────────────────────
 // Catches errors OUTSIDE React's render cycle (ErrorBoundary only catches
 // render-time errors) — e.g. errors thrown from event handlers, timers, or
@@ -458,107 +357,4 @@ export function installGlobalDiagnostics() {
       }
     }, 0);
   });
-
-  installUiUxDetectors();
-}
-
-// ── Passive UI / UX / console detectors ──────────────────────────────────
-// These only ever OBSERVE (event listeners / a single low-frequency
-// PerformanceObserver) — nothing here touches the DOM, patches user code,
-// or adds any work to the render path, so the performance cost is
-// negligible even on low-end devices.
-function installUiUxDetectors() {
-  // Broken images — the #1 "component failed to load" signal available
-  // generically across every page without per-component instrumentation.
-  // Must use the capture phase: resource load errors don't bubble.
-  window.addEventListener(
-    "error",
-    (event) => {
-      const target = event.target as HTMLElement | null;
-      if (target && target instanceof HTMLImageElement) {
-        logUiIssue(
-          `Image failed to load: ${target.currentSrc || target.src || "(no src)"}`,
-          window.location.pathname,
-          { alt: target.alt || null }
-        );
-      }
-    },
-    true
-  );
-
-  // Console capture — funnels console.error / console.warn into the
-  // dashboard so they aren't silently lost outside DevTools. Wrapped so a
-  // failure here can never recurse or throw.
-  const origError = console.error;
-  const origWarn = console.warn;
-  console.error = (...args: unknown[]) => {
-    try {
-      const message = args.map((a) => (a instanceof Error ? a.message : String(a))).join(" ").slice(0, 500);
-      // Never capture diagnostics' own internal failure log — that would
-      // feed a failed write straight back into another write attempt.
-      if (!message.startsWith("[Diagnostics]")) {
-        captureError({ message, category: "console", severity: "error", source: window.location.pathname, action: "console.error" });
-      }
-    } catch {
-      // never let capture break the original console call
-    }
-    origError.apply(console, args as any);
-  };
-  console.warn = (...args: unknown[]) => {
-    try {
-      const message = args.map((a) => (a instanceof Error ? a.message : String(a))).join(" ").slice(0, 500);
-      captureError({ message, category: "console", severity: "info", source: window.location.pathname, action: "console.warn" });
-    } catch {
-      // never let capture break the original console call
-    }
-    origWarn.apply(console, args as any);
-  };
-
-  // Responsive/broken-layout heuristic — the page shouldn't force
-  // horizontal scrolling on its own root. Debounced and only checked on
-  // resize (plus one initial check after layout settles), so this never
-  // runs on a hot path like scroll or render.
-  let overflowTimer: ReturnType<typeof setTimeout> | undefined;
-  const checkOverflow = () => {
-    try {
-      const root = document.documentElement;
-      const overflowPx = root.scrollWidth - window.innerWidth;
-      if (overflowPx > 24) {
-        logUiIssue(
-          `Horizontal overflow detected (page is ${overflowPx}px wider than the viewport)`,
-          window.location.pathname,
-          { viewport: `${window.innerWidth}x${window.innerHeight}`, overflowPx }
-        );
-      }
-    } catch {
-      // ignore
-    }
-  };
-  window.addEventListener("resize", () => {
-    clearTimeout(overflowTimer);
-    overflowTimer = setTimeout(checkOverflow, 500);
-  });
-  setTimeout(checkOverflow, 2000);
-
-  // Long-task detection — a real, measurable performance bottleneck signal
-  // (any task blocking the main thread for 200ms+ is felt as UI jank/
-  // unresponsive buttons). Feature-detected since not every browser
-  // supports the 'longtask' entry type.
-  try {
-    if ("PerformanceObserver" in window) {
-      const supported = (PerformanceObserver as any).supportedEntryTypes as string[] | undefined;
-      if (!supported || supported.includes("longtask")) {
-        const po = new PerformanceObserver((list) => {
-          for (const entry of list.getEntries()) {
-            if (entry.duration >= 200) {
-              logPerformanceIssue("Long main-thread task", entry.duration, 200, window.location.pathname);
-            }
-          }
-        });
-        po.observe({ entryTypes: ["longtask"] });
-      }
-    }
-  } catch {
-    // longtask unsupported — skip silently
-  }
 }

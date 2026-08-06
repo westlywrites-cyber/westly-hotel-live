@@ -46,7 +46,6 @@ const SEVERITY_META: Record<ErrorSeverity, { label: string; color: string; icon:
 const CATEGORY_LABELS: Record<string, string> = {
   render: "Render",
   javascript: "JavaScript",
-  console: "Console",
   api: "API Request",
   firebase_auth: "Auth / Authorization",
   firestore_permission: "Firestore Permission",
@@ -59,16 +58,8 @@ const CATEGORY_LABELS: Record<string, string> = {
   routing: "Routing",
   performance: "Performance",
   background_job: "Background Job",
-  ui_issue: "UI Issue",
-  ux_issue: "UX Issue",
-  stuck_loading: "Stuck Loading",
   other: "Other",
 };
-
-// Categories that represent UI/UX health rather than hard application
-// errors — grouped separately in the summary row so Westly can see
-// "is the app broken" and "is the app annoying" at a glance.
-const UI_UX_CATEGORIES = new Set(["ui_issue", "ux_issue", "stuck_loading", "console"]);
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -111,20 +102,16 @@ export default function DiagnosticsPage() {
     const errors = last24h.filter((l) => l.severity === "error").length;
     const warnings = last24h.filter((l) => l.severity === "warning").length;
     const unresolved = logs.filter((l) => !l.resolved && (l.severity === "error" || l.severity === "critical")).length;
-    const stuckLoading = last24h.filter((l) => l.category === "stuck_loading").length;
-    const uiUx = last24h.filter((l) => UI_UX_CATEGORIES.has(l.category)).length;
-    return { total: last24h.length, critical, errors, warnings, unresolved, stuckLoading, uiUx };
+    return { total: last24h.length, critical, errors, warnings, unresolved };
   }, [last24h, logs]);
 
   // System health: any critical error in the last 15 minutes is "Critical";
-  // 3+ unresolved errors OR any stuck-loading report in the last 15 minutes
-  // is "Degraded"; otherwise "Healthy". Simple and legible at a glance
-  // rather than a black-box score.
+  // 3+ unresolved errors is "Degraded"; otherwise "Healthy". Simple and
+  // legible at a glance rather than a black-box score.
   const health = useMemo(() => {
     const recentCritical = last15min.some((l) => l.severity === "critical");
-    const recentStuck = last15min.some((l) => l.category === "stuck_loading");
     if (recentCritical) return { label: "Critical", color: "text-red-600 bg-red-100 dark:bg-red-900/30 dark:text-red-400", icon: XCircle };
-    if (stats.unresolved >= 3 || recentStuck) return { label: "Degraded", color: "text-amber-600 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400", icon: AlertTriangle };
+    if (stats.unresolved >= 3) return { label: "Degraded", color: "text-amber-600 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400", icon: AlertTriangle };
     return { label: "Healthy", color: "text-green-600 bg-green-100 dark:bg-green-900/30 dark:text-green-400", icon: CheckCircle2 };
   }, [last15min, stats.unresolved]);
 
@@ -204,7 +191,7 @@ export default function DiagnosticsPage() {
           <h1 className="font-serif text-2xl font-bold flex items-center gap-2">
             <Activity className="w-6 h-6 text-primary" /> Diagnostics
           </h1>
-          <p className="text-muted-foreground text-sm">Application, UI &amp; UX health monitoring — visible only to Super Admins</p>
+          <p className="text-muted-foreground text-sm">Application error monitoring — visible only to Super Admins</p>
         </div>
         <div className="flex items-center gap-2">
           <span className={`px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-1.5 ${health.color}`}>
@@ -217,7 +204,7 @@ export default function DiagnosticsPage() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card>
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Events (24h)</p>
@@ -240,18 +227,6 @@ export default function DiagnosticsPage() {
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Unresolved</p>
             <p className="text-2xl font-bold mt-1 text-amber-600">{stats.unresolved}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">Stuck on "Processing…" (24h)</p>
-            <p className="text-2xl font-bold mt-1 text-amber-600">{stats.stuckLoading}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">UI/UX Issues (24h)</p>
-            <p className="text-2xl font-bold mt-1 text-blue-600">{stats.uiUx}</p>
           </CardContent>
         </Card>
       </div>
