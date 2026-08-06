@@ -34,7 +34,7 @@ export async function logAction(
     await addDoc(collection(db, "audit_logs"), {
       userId,
       userName,
-      userRole: userRole || undefined,
+      userRole: userRole || null,
       action,
       collection: collectionName,
       documentId,
