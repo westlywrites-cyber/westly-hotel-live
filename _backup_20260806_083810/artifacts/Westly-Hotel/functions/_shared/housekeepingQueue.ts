@@ -5,9 +5,6 @@ import {
   computeCheckoutTriggerTime, computeOccupiedServiceTriggerTime, isDue,
   dateKeyInTimezone, checkoutTaskId, occupiedTaskId, isAssignmentActiveOn,
 } from "../../src/lib/housekeepingSchedule";
-import {
-  computeTaskWeight, chooseAssignee, applyLoad, type WorkloadEntry,
-} from "../../src/lib/housekeepingBalance";
 
 interface RunResult {
   ranAt: string;
@@ -15,9 +12,6 @@ interface RunResult {
   occupiedServiceTasksCreated: number;
   skippedAlreadyExisted: number;
   unassignedCount: number;
-  /** New tasks that landed with someone OTHER than the room's zone owner,
-   *  because the owner was already overloaded today or off duty. */
-  rebalancedCount: number;
   errors: string[];
 }
 
@@ -33,10 +27,7 @@ async function loadHotelTimeSettings(env: Env): Promise<HotelTimeSettings> {
   };
 }
 
-/** Whoever currently holds the long-term ZONE assignment for a room, if any.
- *  This is the room's "home owner" — workload balancing may still divert an
- *  individual day's task away from them (see chooseAssignee), but this is
- *  always the starting point and is never itself modified here. */
+/** Whoever currently holds the long-term assignment for a room, if any. */
 async function findCurrentAssignee(
   env: Env, roomId: string, now: Date, timezone: string
 ): Promise<{ id: string; name: string } | null> {
@@ -48,49 +39,6 @@ async function findCurrentAssignee(
   const endDate: Date | null = data.endDate ? (data.endDate instanceof Date ? data.endDate : new Date(data.endDate)) : null;
   if (!isAssignmentActiveOn({ startDate, endDate }, now, timezone)) return null;
   return { id: data.housekeeperId, name: data.housekeeperName };
-}
-
-/**
- * Requirement (fairness) — today's on-duty housekeeping roster, sourced
- * from the existing Shift Scheduling data (src/lib/shifts.ts) rather than
- * inventing a separate "who's working" flag. Only staff with a
- * status:"scheduled" shift for today count; cancelled shifts don't.
- */
-async function loadOnDutyRoster(env: Env, dateKey: string): Promise<WorkloadEntry[]> {
-  const shiftsSnap = await fsQuery(env, "shifts", [
-    { field: "role", op: "==", value: "housekeeping" },
-    { field: "date", op: "==", value: dateKey },
-  ]);
-  const roster = new Map<string, WorkloadEntry>();
-  for (const doc of shiftsSnap) {
-    const data = doc.data();
-    if (data.status !== "scheduled") continue;
-    if (!data.staffId || roster.has(data.staffId)) continue;
-    roster.set(data.staffId, { id: data.staffId, name: data.staffName || "Housekeeper", load: 0 });
-  }
-  return Array.from(roster.values());
-}
-
-/**
- * Today's already-queued workload (pending + in_progress task weights) per
- * housekeeper, so a fresh run's balancing decisions build on what's
- * already on everyone's plate rather than starting blind every 5 minutes.
- * Keyed by `dayKey` (added to every task doc below) rather than scanning
- * `scheduledFor` ranges, so this stays a simple two-filter query.
- */
-async function loadTodaysWorkload(env: Env, dateKey: string): Promise<Map<string, number>> {
-  const tasksSnap = await fsQuery(env, "housekeeping_tasks", [
-    { field: "dayKey", op: "==", value: dateKey },
-    { field: "status", op: "in", value: ["pending", "in_progress"] },
-  ]);
-  const loads = new Map<string, number>();
-  for (const doc of tasksSnap) {
-    const data = doc.data();
-    if (!data.assignedTo) continue;
-    const weight = typeof data.weight === "number" ? data.weight : computeTaskWeight(data.type, data.priority);
-    loads.set(data.assignedTo, (loads.get(data.assignedTo) || 0) + weight);
-  }
-  return loads;
 }
 
 /**
@@ -111,9 +59,7 @@ async function createTaskIfAbsent(env: Env, taskId: string, data: Record<string,
  * changing checkOutTime or the lead time takes effect on the very next run
  * with no other action needed.
  */
-async function generateCheckoutTasks(
-  env: Env, now: Date, settings: HotelTimeSettings, dayKey: string, onDuty: WorkloadEntry[], result: RunResult
-) {
+async function generateCheckoutTasks(env: Env, now: Date, settings: HotelTimeSettings, result: RunResult) {
   const bookingsSnap = await fsQuery(env, "bookings", [{ field: "status", op: "==", value: "checked_in" }]);
 
   for (const bookingDoc of bookingsSnap) {
@@ -128,9 +74,7 @@ async function generateCheckoutTasks(
     const roomSnap = await fsGet(env, "rooms", booking.roomId);
     const roomNumber = roomSnap.exists ? roomSnap.data().number : booking.roomId;
 
-    const homeOwner = await findCurrentAssignee(env, booking.roomId, now, settings.timezone);
-    const weight = computeTaskWeight("checkout_cleaning", "high");
-    const choice = chooseAssignee({ homeOwner, onDuty, taskWeight: weight });
+    const assignee = await findCurrentAssignee(env, booking.roomId, now, settings.timezone);
 
     const created = await createTaskIfAbsent(env, taskId, {
       roomId: booking.roomId,
@@ -139,18 +83,13 @@ async function generateCheckoutTasks(
       status: "pending",
       priority: "high",
       instructions: null,
-      assignedTo: choice.assignee?.id ?? null,
-      assignedToName: choice.assignee?.name ?? null,
+      assignedTo: assignee?.id ?? null,
+      assignedToName: assignee?.name ?? null,
       assignedBy: "system",
       assignedByName: "Automatic Queue",
       scheduledFor: trigger,
       bookingId: bookingDoc.id,
       source: "auto_checkout",
-      dayKey,
-      weight,
-      homeOwnerId: homeOwner?.id ?? null,
-      homeOwnerName: homeOwner?.name ?? null,
-      rebalanced: choice.rebalanced,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
       startedAt: null,
@@ -166,15 +105,12 @@ async function generateCheckoutTasks(
     }
     result.checkoutTasksCreated++;
 
-    if (choice.assignee) {
-      applyLoad(onDuty, choice.assignee.id, weight);
-      if (choice.rebalanced) result.rebalancedCount++;
-      const suffix = choice.rebalanced ? " Reassigned today to keep workloads balanced." : "";
+    if (assignee) {
       await serverNotify(env, {
         type: "housekeeping_task_scheduled",
         title: "New Cleaning Task",
-        message: `Room ${roomNumber} needs check-out cleaning (high priority) — guest departs soon.${suffix}`,
-        forUserIds: [choice.assignee.id],
+        message: `Room ${roomNumber} needs check-out cleaning (high priority) — guest departs soon.`,
+        forUserIds: [assignee.id],
         severity: "warning",
         link: "/admin/housekeeping",
       }).catch((e) => result.errors.push(String(e)));
@@ -190,14 +126,13 @@ async function generateCheckoutTasks(
  * original date), queues one daily service task at the configured time.
  * One task per room per hotel-local day (dedupe key includes the date).
  */
-async function generateOccupiedServiceTasks(
-  env: Env, now: Date, settings: HotelTimeSettings, dayKey: string, onDuty: WorkloadEntry[], result: RunResult
-) {
+async function generateOccupiedServiceTasks(env: Env, now: Date, settings: HotelTimeSettings, result: RunResult) {
   if (!settings.occupiedStayServiceEnabled) return;
 
   const trigger = computeOccupiedServiceTriggerTime(now, settings);
   if (!isDue(trigger, now)) return;
 
+  const dateKey = dateKeyInTimezone(now, settings.timezone);
   const bookingsSnap = await fsQuery(env, "bookings", [{ field: "status", op: "==", value: "checked_in" }]);
 
   // A room already has a checkout task in flight today doesn't also need a
@@ -214,13 +149,11 @@ async function generateOccupiedServiceTasks(
       continue; // a checkout cleaning is already pending/in progress for this room today
     }
 
-    const taskId = occupiedTaskId(booking.roomId, dayKey);
+    const taskId = occupiedTaskId(booking.roomId, dateKey);
     const roomSnap = await fsGet(env, "rooms", booking.roomId);
     const roomNumber = roomSnap.exists ? roomSnap.data().number : booking.roomId;
 
-    const homeOwner = await findCurrentAssignee(env, booking.roomId, now, settings.timezone);
-    const weight = computeTaskWeight("occupied_service", "medium");
-    const choice = chooseAssignee({ homeOwner, onDuty, taskWeight: weight });
+    const assignee = await findCurrentAssignee(env, booking.roomId, now, settings.timezone);
 
     const created = await createTaskIfAbsent(env, taskId, {
       roomId: booking.roomId,
@@ -229,18 +162,13 @@ async function generateOccupiedServiceTasks(
       status: "pending",
       priority: "medium",
       instructions: "Guest is in-house — service the room without disturbing personal belongings.",
-      assignedTo: choice.assignee?.id ?? null,
-      assignedToName: choice.assignee?.name ?? null,
+      assignedTo: assignee?.id ?? null,
+      assignedToName: assignee?.name ?? null,
       assignedBy: "system",
       assignedByName: "Automatic Queue",
       scheduledFor: trigger,
       bookingId: bookingDoc.id,
       source: "auto_occupied_stay",
-      dayKey,
-      weight,
-      homeOwnerId: homeOwner?.id ?? null,
-      homeOwnerName: homeOwner?.name ?? null,
-      rebalanced: choice.rebalanced,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
       startedAt: null,
@@ -256,15 +184,12 @@ async function generateOccupiedServiceTasks(
     }
     result.occupiedServiceTasksCreated++;
 
-    if (choice.assignee) {
-      applyLoad(onDuty, choice.assignee.id, weight);
-      if (choice.rebalanced) result.rebalancedCount++;
-      const suffix = choice.rebalanced ? " Assigned to you today to keep workloads balanced." : "";
+    if (assignee) {
       await serverNotify(env, {
         type: "housekeeping_task_scheduled",
         title: "New Cleaning Task",
-        message: `Room ${roomNumber} is due for its daily occupied-room service.${suffix}`,
-        forUserIds: [choice.assignee.id],
+        message: `Room ${roomNumber} is due for its daily occupied-room service.`,
+        forUserIds: [assignee.id],
         severity: "info",
         link: "/admin/housekeeping",
       }).catch((e) => result.errors.push(String(e)));
@@ -281,35 +206,19 @@ export async function runHousekeepingQueueGeneration(env: Env, now: Date = new D
     occupiedServiceTasksCreated: 0,
     skippedAlreadyExisted: 0,
     unassignedCount: 0,
-    rebalancedCount: 0,
     errors: [],
   };
 
   const settings = await loadHotelTimeSettings(env);
-  const dayKey = dateKeyInTimezone(now, settings.timezone);
-
-  // Load today's on-duty roster (Shift Scheduling) and whatever's already
-  // queued for today ONCE per run, then thread the same roster array
-  // through both generators below (and mutate it via applyLoad as tasks are
-  // handed out) so checkout tasks and occupied-service tasks in the same
-  // run are balanced against each other, not just within themselves.
-  let onDuty: WorkloadEntry[] = [];
-  try {
-    onDuty = await loadOnDutyRoster(env, dayKey);
-    const existingLoad = await loadTodaysWorkload(env, dayKey);
-    onDuty.forEach(o => { o.load = existingLoad.get(o.id) || 0; });
-  } catch (err: any) {
-    result.errors.push(`workload roster: ${err?.message || err}`);
-  }
 
   try {
-    await generateCheckoutTasks(env, now, settings, dayKey, onDuty, result);
+    await generateCheckoutTasks(env, now, settings, result);
   } catch (err: any) {
     result.errors.push(`checkout tasks: ${err?.message || err}`);
   }
 
   try {
-    await generateOccupiedServiceTasks(env, now, settings, dayKey, onDuty, result);
+    await generateOccupiedServiceTasks(env, now, settings, result);
   } catch (err: any) {
     result.errors.push(`occupied-service tasks: ${err?.message || err}`);
   }
@@ -326,7 +235,7 @@ export async function runHousekeepingQueueGeneration(env: Env, now: Date = new D
       await serverNotify(env, {
         type: "housekeeping_task_scheduled",
         title: "Unassigned Housekeeping Tasks",
-        message: `${result.unassignedCount} housekeeping task(s) were queued with no housekeeper available (no active room assignment, or the zone owner isn't on shift today with nobody else on duty to cover). Assign them from Room Assignments.`,
+        message: `${result.unassignedCount} housekeeping task(s) were queued for rooms with no active room assignment. Assign them from Room Assignments.`,
         forUserIds: opsIds,
         severity: "warning",
         link: "/admin/housekeeping/assignments",

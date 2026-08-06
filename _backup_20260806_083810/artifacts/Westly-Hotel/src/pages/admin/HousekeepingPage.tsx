@@ -26,7 +26,6 @@ import { cn } from "@/lib/utils";
 import { DataError } from "@/components/ui/data-error";
 import { logBackgroundJobFailure } from "@/lib/diagnostics";
 import { PinSessionEndingOverlay } from "@/components/admin/PinSessionEndingOverlay";
-import HousekeepingWorkloadCard from "@/components/admin/HousekeepingWorkloadCard";
 
 function fmtWhen(v: any): string {
   if (!v) return "—";
@@ -348,10 +347,9 @@ function HousekeepingOverview() {
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result?.error || "Failed to run queue generator.");
-      const rebalancedNote = result.rebalancedCount > 0 ? ` (${result.rebalancedCount} rebalanced for fairness)` : "";
       toast({
         title: "Queue Updated",
-        description: `${result.checkoutTasksCreated} checkout + ${result.occupiedServiceTasksCreated} occupied-service task(s) created${rebalancedNote}.`,
+        description: `${result.checkoutTasksCreated} checkout + ${result.occupiedServiceTasksCreated} occupied-service task(s) created.`,
       });
     } catch (err: any) {
       logBackgroundJobFailure("housekeeping-queue-run-now", err);
@@ -449,8 +447,6 @@ function HousekeepingOverview() {
           </Card>
         ))}
       </div>
-
-      <HousekeepingWorkloadCard />
 
       {loading ? (
         <div className="flex items-center justify-center h-40">

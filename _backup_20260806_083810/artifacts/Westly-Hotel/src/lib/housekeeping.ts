@@ -9,8 +9,6 @@ import {
   notifyRoomsAssigned, notifyRoomsReassigned, notifyRoomAssignmentEnded,
   notifyHousekeepingTaskQueued, notifyHousekeepingDone,
 } from "./notifications";
-import { dateKeyInTimezone } from "./housekeepingSchedule";
-import { computeTaskWeight } from "./housekeepingBalance";
 
 export type HousekeepingTaskType = "checkout_cleaning" | "occupied_service" | "manual" | "maintenance_followup" | "cleaning";
 export type HousekeepingTaskStatus = "pending" | "in_progress" | "completed" | "skipped";
@@ -237,15 +235,6 @@ export interface CreateTaskParams {
 
 export async function createManualHousekeepingTask(params: CreateTaskParams): Promise<string> {
   const { roomId, roomNumber, type, priority, instructions, assignedTo, assignedToName, scheduledFor, actor } = params;
-  // dayKey/weight feed the same fairness accounting the automatic queue uses
-  // (see housekeepingBalance.ts + functions/_shared/housekeepingQueue.ts) —
-  // a manually-assigned task still counts toward that housekeeper's load for
-  // today so the next auto-generated task is balanced against it too. Local
-  // browser timezone is an acceptable approximation here (unlike the
-  // server-side queue, this never has to decide *whether* a task is due).
-  const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-  const dayKey = dateKeyInTimezone(scheduledFor || new Date(), browserTimezone);
-  const weight = computeTaskWeight(type, priority);
   const ref = await addDoc(collection(db, "housekeeping_tasks"), {
     roomId,
     roomNumber,
@@ -260,11 +249,6 @@ export async function createManualHousekeepingTask(params: CreateTaskParams): Pr
     scheduledFor: Timestamp.fromDate(scheduledFor || new Date()),
     source: "manual",
     bookingId: null,
-    dayKey,
-    weight,
-    homeOwnerId: null,
-    homeOwnerName: null,
-    rebalanced: false,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
     startedAt: null,
