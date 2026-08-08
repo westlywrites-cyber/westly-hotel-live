@@ -116,9 +116,6 @@ export default function BookingPage() {
       const selectedRoom = rooms.find((r: any) => r.id === form.roomId) as any;
       const bookingId = "BK-" + Math.random().toString(36).slice(2, 8).toUpperCase();
 
-      // Written as a batch so the guest-facing booking record and its
-      // PII-free booking_dates mirror (used for public availability checks)
-      // land together or not at all. See firestore.rules / roomLogic.ts.
       const bookingRef = doc(collection(db, "bookings"));
       const batch = writeBatch(db);
 
@@ -155,7 +152,6 @@ export default function BookingPage() {
       await batch.commit();
       const docRef = bookingRef;
 
-      // Notify management
       notifyNewBooking(form.guestName, form.roomType, format(checkIn, "MMM d"), format(checkOut, "MMM d")).catch(() => {});
 
       toast({ title: "Booking Request Sent!", description: `Booking ID: ${bookingId}` });

@@ -4,11 +4,63 @@ import { ref, set } from "firebase/database";
 
 export type RoomStatus = "available" | "occupied" | "reserved" | "cleaning" | "maintenance" | "out_of_service";
 
+// The query every conflict check reads — centralized so detectConflict(),
+// detectConflictInTransaction(), and any future call site always agree on
+// which booking_dates rows count as "active" for availability purposes.
+function conflictQuery(roomId: string) {
+  return query(
+    collection(db, "booking_dates"),
+    where("roomId", "==", roomId),
+    where("status", "in", ["confirmed", "checked_in", "pending"])
+  );
+}
+
+/**
+ * Standard overlap formula, shared by every conflict-check call site so it
+ * is only ever expressed once: existing.checkIn < new.checkOut AND
+ * existing.checkOut > new.checkIn. Same-day turnover (one booking's
+ * check-out exactly equals another's check-in) is NOT a conflict.
+ */
+export function datesOverlap(aCheckIn: Date, aCheckOut: Date, bCheckIn: Date, bCheckOut: Date): boolean {
+  return aCheckIn < bCheckOut && aCheckOut > bCheckIn;
+}
+
+function toDate(value: any): Date {
+  return value?.toDate ? value.toDate() : new Date(value);
+}
+
+/**
+ * Pure conflict-evaluation core, decoupled from Firestore so it can be unit
+ * tested directly. `docs` is any array of objects exposing `.id` and
+ * `.data()` — both QuerySnapshot.docs (from getDocs) and the docs returned
+ * by transaction.get(query) satisfy this shape.
+ */
+export function findConflictInDocs(
+  docs: { id: string; data: () => any }[],
+  checkIn: Date,
+  checkOut: Date,
+  excludeBookingId?: string
+): boolean {
+  for (const docSnap of docs) {
+    if (excludeBookingId && docSnap.id === excludeBookingId) continue;
+    const booking = docSnap.data();
+    const bCheckIn = toDate(booking.checkIn);
+    const bCheckOut = toDate(booking.checkOut);
+    if (datesOverlap(bCheckIn, bCheckOut, checkIn, checkOut)) return true;
+  }
+  return false;
+}
+
 /**
  * Detect booking conflicts for a room in a given date range.
  * Returns true if there is an overlapping active booking.
- * 
- * Overlap condition: existing.checkIn < new.checkOut AND existing.checkOut > new.checkIn
+ *
+ * NON-TRANSACTIONAL — this is a plain read and does not guard against a
+ * concurrent write racing in between this check and a later write. It
+ * remains useful as a UX-only early warning (e.g. during date selection,
+ * before the final submit). The actual atomicity guarantee for a real
+ * booking write must come from detectConflictInTransaction() below, used
+ * inside a runTransaction() block.
  */
 export async function detectConflict(
   roomId: string,
@@ -21,29 +73,10 @@ export async function detectConflict(
   // visitors on the public booking page too. booking_dates is a PII-free
   // mirror (roomId + date range + status) kept in sync wherever a booking
   // is created or its status changes — see firestore.rules for details.
-  const q = query(
-    collection(db, "booking_dates"),
-    where("roomId", "==", roomId),
-    where("status", "in", ["confirmed", "checked_in", "pending"])
-  );
-
-  const snapshot = await getDocs(q);
-
-  for (const docSnap of snapshot.docs) {
-    if (excludeBookingId && docSnap.id === excludeBookingId) continue;
-    const booking = docSnap.data();
-
-    const bCheckIn: Date = booking.checkIn?.toDate ? booking.checkIn.toDate() : new Date(booking.checkIn);
-    const bCheckOut: Date = booking.checkOut?.toDate ? booking.checkOut.toDate() : new Date(booking.checkOut);
-
-    // Standard overlap formula
-    if (bCheckIn < checkOut && bCheckOut > checkIn) {
-      return true;
-    }
-  }
-
-  return false;
+  const snapshot = await getDocs(conflictQuery(roomId));
+  return findConflictInDocs(snapshot.docs, checkIn, checkOut, excludeBookingId);
 }
+
 
 /**
  * Find rooms of a given type that have NO conflicts for the requested dates.
