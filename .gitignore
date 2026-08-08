@@ -47,3 +47,5 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+artifacts/Westly-Hotel/.dev.vars
+lib/.dev.vars
