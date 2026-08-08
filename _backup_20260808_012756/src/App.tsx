@@ -3,7 +3,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { usePageTracking } from "@/hooks/useAnalytics";
 
 // Public pages
 import HomePage from "@/pages/public/HomePage";
@@ -44,7 +43,6 @@ import RolesPage from "@/pages/admin/RolesPage";
 import ReportsPage from "@/pages/admin/ReportsPage";
 import AuditLogPage from "@/pages/admin/AuditLogPage";
 import DiagnosticsPage from "@/pages/admin/DiagnosticsPage";
-import AnalyticsPage from "@/pages/admin/AnalyticsPage";
 import BugManagementPage from "@/pages/admin/BugManagementPage";
 import DeletedRecordsPage from "@/pages/admin/DeletedRecordsPage";
 import CMSPage from "@/pages/admin/CMSPage";
@@ -167,10 +165,6 @@ function StandaloneRoute({ component: Component }: { component: React.ComponentT
 
 // ── Router ────────────────────────────────────────────────────────────────────
 function Router() {
-  // Fires a page-view record on every route change, public site and admin
-  // area alike — see src/hooks/useAnalytics.ts / src/lib/analytics.ts.
-  usePageTracking();
-
   return (
     <Switch>
       {/* ── Public routes ── */}
@@ -213,7 +207,6 @@ function Router() {
       <Route path="/admin/reports" component={ProtectedRoute({ component: ReportsPage, allowedRoles: ["super_admin", "manager", "accountant"] })} />
       <Route path="/admin/audit-log" component={ProtectedRoute({ component: AuditLogPage, allowedRoles: ["super_admin"] })} />
       <Route path="/admin/diagnostics" component={ProtectedRoute({ component: DiagnosticsPage, allowedRoles: ["super_admin"] })} />
-      <Route path="/admin/analytics" component={ProtectedRoute({ component: AnalyticsPage, allowedRoles: ["super_admin"] })} />
       <Route path="/admin/bug-management" component={ProtectedRoute({ component: BugManagementPage, allowedRoles: ["super_admin"] })} />
       <Route path="/admin/deleted-records" component={ProtectedRoute({ component: DeletedRecordsPage, allowedRoles: ["super_admin"] })} />
       <Route path="/admin/cms" component={ProtectedRoute({ component: CMSPage, allowedRoles: ["super_admin"] })} />

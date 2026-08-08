@@ -2,15 +2,10 @@ import { createRoot } from 'react-dom/client';
 
 import App from './App';
 import { installGlobalDiagnostics } from '@/lib/diagnostics';
-import { installAnalytics } from '@/lib/analytics';
 
 import './index.css';
 
 // Must run before the app mounts so no early error slips past uncaptured.
 installGlobalDiagnostics();
-// Usage analytics — page views, search, and interaction tracking. Safe to
-// install unconditionally: every write inside is fire-and-forget and never
-// throws, so a failure here can never break the app (see src/lib/analytics.ts).
-installAnalytics();
 
 createRoot(document.getElementById('root')!).render(<App />);

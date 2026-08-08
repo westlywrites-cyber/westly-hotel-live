@@ -5,7 +5,6 @@ import { auth, db } from "@/lib/firebase";
 import type { Role } from "@/lib/rbac";
 import { useLocation } from "wouter";
 import { setDiagnosticsContext, clearDiagnosticsContext, logAuthError } from "@/lib/diagnostics";
-import { setAnalyticsContext, clearAnalyticsContext } from "@/lib/analytics";
 
 export interface AdminUser {
   id: string;
@@ -87,9 +86,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               // Every diagnostic captured from here on is attributed to this
               // user/role automatically — see src/lib/diagnostics.ts.
               setDiagnosticsContext({ userId: admin.id, userName: admin.name, userRole: admin.role });
-              // Attributes every subsequent page view / search / interaction
-              // to this user — see src/lib/analytics.ts.
-              setAnalyticsContext({ userId: admin.id, userName: admin.name, userRole: admin.role });
             }
           } else {
             // Firebase auth user exists but no admin record
@@ -97,7 +93,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setRole(null);
             setSessionType(null);
             clearDiagnosticsContext();
-            clearAnalyticsContext();
           }
         } catch (error) {
           console.error("Error fetching admin data:", error);
@@ -111,7 +106,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setRole(null);
         setSessionType(null);
         clearDiagnosticsContext();
-        clearAnalyticsContext();
       }
 
       setIsLoading(false);
@@ -127,7 +121,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setRole(null);
     setSessionType(null);
     clearDiagnosticsContext();
-    clearAnalyticsContext();
     // A PIN terminal should return to the PIN keypad, not the staff email
     // login screen — it's a shared device, not any one person's session.
     setLocation(wasPin ? "/admin/pin" : "/admin/login");

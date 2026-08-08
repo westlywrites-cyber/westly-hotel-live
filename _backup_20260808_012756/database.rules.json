@@ -29,19 +29,6 @@
       // Live activity timeline — admin only
       ".read": "auth != null",
       ".write": "auth != null"
-    },
-
-    "presence": {
-      // Real-Time Activity for the Usage Analytics dashboard
-      // (src/lib/analytics.ts). One entry per active browser tab, keyed by
-      // session id, self-removed via onDisconnect() when the tab closes or
-      // the connection drops — so this never accumulates stale entries.
-      // Write is open to any client (signed in or not) because public
-      // guest-site presence matters too, same reasoning as roomStatus
-      // above. Read is admin-only since the Analytics dashboard is the
-      // only consumer.
-      ".read": "auth != null",
-      ".write": true
     }
   }
 }

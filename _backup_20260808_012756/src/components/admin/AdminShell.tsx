@@ -135,7 +135,6 @@ const NAV: NavItem[] = [
   { label: "Staff Performance", href: "/admin/staff-performance", icon: BarChart2, roles: ["super_admin", "manager"] },
   { label: "Users & Roles", href: "/admin/users", icon: UserCog, roles: ["super_admin"] },
   { label: "Audit Log", href: "/admin/audit-log", icon: History, roles: ["super_admin"] },
-  { label: "Usage Analytics", href: "/admin/analytics", icon: BarChart2, roles: ["super_admin"] },
   { label: "Diagnostics", href: "/admin/diagnostics", icon: Activity, roles: ["super_admin"] },
   { label: "Bug Management", href: "/admin/bug-management", icon: Bug, roles: ["super_admin"] },
   { label: "Deleted Records", href: "/admin/deleted-records", icon: Archive, roles: ["super_admin"] },
