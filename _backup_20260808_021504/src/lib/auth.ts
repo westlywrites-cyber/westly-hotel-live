@@ -14,7 +14,7 @@ export async function hashPin(pin: string): Promise<string> {
  * Verifies a shared-device PIN and, on success, signs the browser into a
  * real Firebase Auth session for that user.
  *
- * The actual lookup happens server-side (functions/api/verify-pin.ts)
+ * The actual lookup happens server-side (netlify/functions/verify-pin.ts)
  * via the Admin SDK, which is required — a client-side Firestore query for
  * "who has this PIN" can never succeed before the visitor is authenticated,
  * since the security rules correctly require isSignedIn() to list /users.

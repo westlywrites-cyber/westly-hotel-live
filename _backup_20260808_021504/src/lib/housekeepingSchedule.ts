@@ -2,9 +2,8 @@
 // HOUSEKEEPING SCHEDULING — pure logic (no Firebase imports).
 //
 // This module is shared by:
-//   • functions/_shared/housekeepingQueue.ts (the scheduled job that
-//     actually creates housekeeping_tasks docs, imported from
-//     workers/housekeeping-cron/ as the Cloudflare Worker's cron handler)
+//   • netlify/functions/_shared/housekeepingQueue.ts (the scheduled job that
+//     actually creates housekeeping_tasks docs)
 //   • the client (to show "next scheduled" hints without a round trip)
 //
 // Keeping it Firebase-free means it can be unit tested directly (see

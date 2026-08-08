@@ -1,0 +1,22 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Westly Demo Hotel — Cloudflare Pages redirects
+# See DEPLOYMENT.md for the decision record.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── SPA catch-all: works immediately, with zero domain knowledge ────────────
+# Any deep link (e.g. a bookmarked /admin/pin URL, a shared
+# /booking/confirmation?id=... link) falls through to index.html so the
+# client-side router (wouter) can handle it instead of 404ing.
+/*  /index.html  200
+
+# ── TODO: replace example.com with the real production domain before
+#    deploying to production. Subdomain routing on Cloudflare Pages requires
+#    literal hostnames, not wildcards — see DEPLOYMENT.md.
+#
+#    Until this block is edited, it cannot match any real hostname, so the
+#    site simply serves the same SPA at every hostname (a safe, non-broken
+#    default) rather than routing subdomains.
+#
+# admin.example.com/*        /admin/:splat   200
+# admin.example.com          /admin/login    301
+# hotel.example.com          /admin/pin      301

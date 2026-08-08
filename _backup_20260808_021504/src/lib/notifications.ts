@@ -403,8 +403,8 @@ export function notifyRoomAssignmentEnded(housekeeperId: string, roomNumbers: st
 // Client-triggered manual task assignment (Ops Manager assigning a specific
 // housekeeping task to a specific person). The automatic pre-checkout /
 // occupied-stay queue (Requirements 3 & 4) is generated server-side by the
-// housekeeping-cron Cloudflare Worker, which notifies via its own admin-SDK
-// path (see functions/_shared/serverNotify.ts) since it has no signed-in
+// Netlify scheduled function, which notifies via its own admin-SDK path
+// (see netlify/functions/_shared/serverNotify.ts) since it has no signed-in
 // client user to act as.
 export function notifyHousekeepingTaskQueued(
   roomNumber: string, assignedToId: string, priority: string, assignedBy: string, instructions?: string | null

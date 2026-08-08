@@ -220,8 +220,7 @@ export async function updateRoomAssignmentGroup(
 // ══════════════════════════════════════════════════════════════════════════
 // HOUSEKEEPING TASKS — manual creation & lifecycle
 // (Automatic creation for checkout/occupied-stay lives server-side in
-//  functions/_shared/housekeepingQueue.ts, run on a 5-minute cron by the
-//  Cloudflare Worker in workers/housekeeping-cron/ — Requirements 3 & 4.)
+//  netlify/functions/_shared/housekeepingQueue.ts — Requirements 3 & 4.)
 // ══════════════════════════════════════════════════════════════════════════
 
 export interface CreateTaskParams {

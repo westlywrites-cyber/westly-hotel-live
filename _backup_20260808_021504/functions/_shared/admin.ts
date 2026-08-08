@@ -3,8 +3,8 @@
 // this folder. This is the ONLY place service-account credentials are
 // touched — never import this from client code.
 //
-// Business logic (who is allowed to do what) is unchanged from the original
-// Netlify Functions version of this file. Only the plumbing changed:
+// Business logic (who is allowed to do what) is unchanged from
+// netlify/functions/_shared/admin.ts. Only the plumbing changed:
 //   - firebase-admin's adminAuth/adminDb  →  functions/_shared/firebaseRest.ts
 //   - jsonResponse() returns a Netlify {statusCode,...} object → now a
 //     native Response
