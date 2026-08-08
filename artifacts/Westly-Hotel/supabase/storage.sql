@@ -17,11 +17,13 @@
 --     cms-about/, gallery/, venues/, cms-venue-hero/
 --
 --   The bucket is public for read (so uploaded images render on the public
---   website with no auth). Admin panel writes (insert/update/delete) use the
---   same anon key + app-level Firebase-based RBAC pattern already used for
---   public.messages (see schema.sql) — access to the admin screens that can
---   upload is enforced by this app's own role checks, since staff
---   identity/roles live in Firebase Auth, not Supabase Auth.
+--   website with no auth). Admin panel writes (insert/update/delete) go
+--   through server-side Cloudflare Functions (see
+--   functions/api/media-upload.ts, functions/api/media-delete.ts) using a
+--   service-role key gated by a real Firebase-authenticated staff
+--   session — not the public anon key (see the Phase 2 security audit,
+--   finding C-3; the anon key previously had insert/update/delete on this
+--   bucket, so anyone holding it could write or delete files directly).
 -- ══════════════════════════════════════════════════════════════════════════
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
@@ -38,24 +40,10 @@ create policy "westly-media public read"
   to public
   using (bucket_id = 'westly-media');
 
+-- Anon insert/update/delete policies intentionally removed — see the file
+-- header above. Service-role calls (used by the Functions listed there)
+-- bypass RLS by design, so no anon/authenticated replacement policy is
+-- needed for these operations.
 drop policy if exists "westly-media anon upload" on storage.objects;
-create policy "westly-media anon upload"
-  on storage.objects
-  for insert
-  to anon
-  with check (bucket_id = 'westly-media');
-
 drop policy if exists "westly-media anon update" on storage.objects;
-create policy "westly-media anon update"
-  on storage.objects
-  for update
-  to anon
-  using (bucket_id = 'westly-media')
-  with check (bucket_id = 'westly-media');
-
 drop policy if exists "westly-media anon delete" on storage.objects;
-create policy "westly-media anon delete"
-  on storage.objects
-  for delete
-  to anon
-  using (bucket_id = 'westly-media');

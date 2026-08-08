@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from "./supabase";
+import { callAdminFunction } from "./adminApi";
 
 // ══════════════════════════════════════════════════════════════════════════
 // MESSAGE INBOX — public-website enquiries, stored in Supabase (see
@@ -13,6 +14,16 @@ import { supabase, isSupabaseConfigured } from "./supabase";
 //     app runs with Supabase configured.
 //   • fetchMessages() / subscribeToMessages() simply return nothing to
 //     show, and MessagesPage.tsx renders a "not connected yet" state.
+//
+// STAFF-FACING READ/WRITE PATH (fetchMessages, markMessageRead,
+// setReplyStatus, softDeleteMessage) goes through the Cloudflare
+// Functions /api/messages-list and /api/messages-update instead of calling
+// Supabase directly with the public anon key (audit finding C-3) — a
+// Firebase-authenticated staff session with view:messages permission
+// (src/lib/rbac.ts) is required server-side. The public submission path
+// below (submitPublicMessage/flushQueuedMessages) and the realtime
+// subscription (subscribeToMessages) are UNCHANGED and continue to use the
+// anon key directly, as intended.
 // ══════════════════════════════════════════════════════════════════════════
 
 export interface InboxMessage {
@@ -111,14 +122,9 @@ export async function flushQueuedMessages(): Promise<number> {
 }
 
 export async function fetchMessages(): Promise<InboxMessage[]> {
-  if (!isSupabaseConfigured || !supabase) return [];
-  const { data, error } = await supabase
-    .from("messages")
-    .select("*")
-    .eq("is_deleted", false)
-    .order("created_at", { ascending: false });
-  if (error) throw error;
-  return (data ?? []) as InboxMessage[];
+  if (!isSupabaseConfigured) return [];
+  const { messages } = await callAdminFunction<{ messages: InboxMessage[] }>("messages-list", {});
+  return messages ?? [];
 }
 
 /**
@@ -131,6 +137,21 @@ export async function fetchMessages(): Promise<InboxMessage[]> {
  * (see useMessages.ts), and React error boundaries do not catch errors
  * thrown from effects, so an unguarded throw here takes down the entire
  * app to a blank screen. This try/catch is not optional.
+ *
+ * KNOWN CONSEQUENCE OF THE C-3 FIX: Supabase Realtime enforces each
+ * table's Row Level Security for `postgres_changes` — a subscribing role
+ * only receives change events for rows it could SELECT under RLS. Since
+ * schema.sql's "anon can read messages" policy was intentionally dropped
+ * (server-only reads now, via /api/messages-list), this anon-key
+ * subscription will connect successfully but will no longer actually
+ * receive INSERT/UPDATE events; live-callback-triggered refreshes have
+ * stopped firing. The initial load and every explicit refresh in
+ * useMessages.ts still work correctly (they go through fetchMessages()
+ * above, which is unaffected). Left as-is deliberately — re-enabling live
+ * push here would mean either reintroducing an anon SELECT policy (undoing
+ * the fix) or building a separate authenticated realtime channel, both out
+ * of scope for this phase. A manual refresh (the `refresh` returned by
+ * useMessages()) still reflects new messages immediately.
  */
 export function subscribeToMessages(onChange: () => void): () => void {
   if (!isSupabaseConfigured || !supabase) return () => {};
@@ -157,28 +178,23 @@ export function subscribeToMessages(onChange: () => void): () => void {
 }
 
 export async function markMessageRead(id: string): Promise<void> {
-  if (!supabase) return;
-  await supabase
-    .from("messages")
-    .update({ status: "read", read_at: new Date().toISOString() })
-    .eq("id", id);
+  if (!isSupabaseConfigured) return;
+  await callAdminFunction<{ success: true }>("messages-update", { id, action: "mark_read" });
 }
 
 export async function setReplyStatus(
   id: string,
   replyStatus: InboxMessage["reply_status"]
 ): Promise<void> {
-  if (!supabase) return;
-  await supabase
-    .from("messages")
-    .update({
-      reply_status: replyStatus,
-      replied_at: replyStatus === "replied" ? new Date().toISOString() : null,
-    })
-    .eq("id", id);
+  if (!isSupabaseConfigured) return;
+  await callAdminFunction<{ success: true }>("messages-update", {
+    id,
+    action: "set_reply_status",
+    replyStatus,
+  });
 }
 
 export async function softDeleteMessage(id: string): Promise<void> {
-  if (!supabase) return;
-  await supabase.from("messages").update({ is_deleted: true }).eq("id", id);
+  if (!isSupabaseConfigured) return;
+  await callAdminFunction<{ success: true }>("messages-update", { id, action: "soft_delete" });
 }

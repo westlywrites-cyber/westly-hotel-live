@@ -1,7 +1,10 @@
 import { auth } from "./firebase";
 import { logApiError } from "./diagnostics";
 
-async function callAdminFunction<T>(name: string, payload: unknown): Promise<T> {
+// Exported so other admin-facing modules (e.g. messages.ts, storage.ts) can
+// reuse the same signed-request + error-logging choke point instead of
+// re-implementing it — see callAdminFunction's own comments for why.
+export async function callAdminFunction<T>(name: string, payload: unknown): Promise<T> {
   try {
     const currentUser = auth.currentUser;
     if (!currentUser) throw new Error("You must be signed in to do this.");

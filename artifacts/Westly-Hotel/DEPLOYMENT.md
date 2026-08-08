@@ -66,6 +66,9 @@ Worker secrets are configured independently from the Pages project's environment
 |---|---|
 | `FIREBASE_SERVICE_ACCOUNT_KEY` | Required. Base64-encoded service account JSON, read by `functions/_shared/firebaseRest.ts`. |
 | `FIREBASE_DATABASE_URL` | Optional. Kept for parity with the old Netlify env var name — **not currently read by any server function** (confirmed against `functions/_shared/firebaseRest.ts`); don't spend time chasing it if it's unset. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Required for the Message Inbox and media upload/delete Functions (`functions/api/messages-list.ts`, `messages-update.ts`, `media-upload.ts`, `media-delete.ts`), read by `functions/_shared/supabaseAdmin.ts`. Get this from Supabase Dashboard → Project Settings → API → `service_role` secret. **Never expose this to the client** — it bypasses Row Level Security entirely, which is exactly why it must stay a Cloudflare **Secret**, not a `VITE_`-prefixed build variable. |
+
+These Functions also read `VITE_SUPABASE_URL` (the same public project URL already set below for the client bundle) at runtime via `context.env` — Cloudflare Pages exposes every configured environment variable to Pages Functions regardless of its `VITE_` prefix, so no separate/duplicate URL variable is needed in production. For local `wrangler pages dev` testing, add `VITE_SUPABASE_URL` to `.dev.vars` too (it only reads that file, not the root `.env` Vite uses) — see `.dev.vars.example`.
 
 ### Build-time client variables (type **Environment variable**, applied at build time, must be prefixed `VITE_`)
 

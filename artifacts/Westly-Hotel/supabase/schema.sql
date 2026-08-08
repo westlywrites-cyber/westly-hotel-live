@@ -8,10 +8,12 @@
 --   1. A `messages` table for enquiries submitted through the public
 --      website's Contact form.
 --   2. Row Level Security so anonymous website visitors can only INSERT
---      (never read other people's messages), while your app's anon key can
---      read/update for the staff-facing Message Inbox (access to the inbox
---      itself is enforced in the app by Firebase-based role checks, since
---      staff identity/roles live in Firebase Auth, not Supabase Auth).
+--      (never read other people's messages, and never read or modify
+--      existing ones). The staff-facing Message Inbox reads and writes
+--      through server-side Cloudflare Functions (see
+--      functions/api/messages-list.ts, functions/api/messages-update.ts)
+--      using a service-role key gated by a real Firebase-authenticated
+--      staff session — not this anon key.
 --   3. Realtime replication so the admin inbox updates live, with no
 --      polling.
 --
@@ -55,27 +57,18 @@ create policy "anon can submit messages"
   to anon
   with check (true);
 
--- The staff Message Inbox reads/updates using the same anon key (this app
--- enforces who can reach that screen via its own Firebase-based role
--- system — see src/lib/rbac.ts and the /admin/messages route guard), so we
--- allow anon to select/update here too. If you would rather lock this down
--- at the database layer as well, swap `to anon` below for `to authenticated`
--- and have the app sign in to Supabase with a service role via a serverless
--- function instead of the public anon key.
+-- The staff Message Inbox previously read/updated using this same anon key
+-- (relying entirely on this app's own Firebase-based role system — see
+-- src/lib/rbac.ts — to gate who could reach that screen). That left the
+-- table readable/writable by anyone holding the public anon key, not only
+-- signed-in staff (see the Phase 2 security audit, finding C-3). The
+-- Message Inbox now reads and writes through server-side Cloudflare
+-- Functions (/api/messages-list, /api/messages-update) using a
+-- service-role key that verifies a real Firebase session first — so no
+-- anon SELECT/UPDATE policy is needed here anymore. Only the public INSERT
+-- policy above (used by the Contact form) remains.
 drop policy if exists "anon can read messages" on public.messages;
-create policy "anon can read messages"
-  on public.messages
-  for select
-  to anon
-  using (true);
-
 drop policy if exists "anon can update messages" on public.messages;
-create policy "anon can update messages"
-  on public.messages
-  for update
-  to anon
-  using (true)
-  with check (true);
 
 -- Realtime: stream INSERT/UPDATE events to subscribed clients (the admin
 -- Message Inbox) so new enquiries and read/reply status changes appear
